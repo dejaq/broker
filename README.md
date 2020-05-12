@@ -21,6 +21,8 @@ We have high hopes for this project but in the first iteration, this alpha versi
 * `Dynamic consuming` One of the largest advantages of DejaQ is that topics are split into partitions (internally) and they are assigned dynamically at runtime. Although the algorithm in this alpha version is basic it will be extended in the future to allow more complex consuming strategies.
 * `At least once delivery`, the best effort for exactly-once-delivery with the comment that the consumer has to successfully ack the processed messages in a timely manner (as long as it has its partitions assigned)
 * `Ordering` is guaranteed at the consumer level (it will receive the smallest priority messages each pull from its assigned partitions). Different consumers may receive higher priority messages at the same time (because they consume from different partitions)
+* `shared nothing` architecture - all brokers can serve all purposes (and if not they will act as a proxy)
+* `Cloud native` we have docker images and binaries build pipelines, offer support for K8S deployments and export Prometheus compatible metrics. Basically anything you need to run DejaQ in an elastic distributed nature.  
 
 What we will NOT deliver in this alpha: 
 * ACL, login/sessions
