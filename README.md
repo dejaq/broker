@@ -37,6 +37,7 @@ What we will NOT deliver in this alpha:
 * Cooperative dynamic consuming: Consumers are assigned priorities per partitions (multiple consumers can consume same lagging partitions)
 * backup/restore capabilities
 * PUSH based GRPC consumers
+* large messages - We believe that large messages >64kb should live in distributed shared file systems and not in messaging queues databases so our broker will support block disk/persistent volumes (like AWS EBS) and Object Storage (like AWS S3) that will do the heavy lifting for us.
 
 
 # Contributing 
