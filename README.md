@@ -23,6 +23,7 @@ We have high hopes for this project but in the first iteration, this alpha versi
 * `Ordering` is guaranteed at the consumer level (it will receive the smallest priority messages each pull from its assigned partitions). Different consumers may receive higher priority messages at the same time (because they consume from different partitions)
 * `shared nothing` architecture - all brokers can serve all purposes (and if not they will act as a proxy)
 * `Cloud native` we have docker images and binaries build pipelines, offer support for K8S deployments and export Prometheus compatible metrics. Basically anything you need to run DejaQ in an elastic distributed nature.  
+* `agnostic` messages, for us they are just an array of bytes `[]bytes`. The maximum allowed size for one message is 64Kb.
 
 What we will NOT deliver in this alpha: 
 * ACL, login/sessions
