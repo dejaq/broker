@@ -23,3 +23,11 @@ func (t *LocalStorageMetadata) WriteBatch(batch []KVPair) error {
 func (t *LocalStorageMetadata) GetTopicUUID(topic string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (t *LocalStorageMetadata) UpsertConsumer(consumerID string) error {
+	return errors.New("not implemented")
+}
+
+func (t *LocalStorageMetadata) UpsertTopic(topic string) error {
+	return errors.New("not implemented")
+}

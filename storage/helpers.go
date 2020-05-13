@@ -7,11 +7,36 @@ import (
 	"unsafe"
 )
 
-var (
-	ErrInvalidKey = errors.New("corrupted message key should be 8 bytes")
-)
+//
+//var (
+//	ErrInvalidKey = errors.New("corrupted message key should be 8 bytes")
+//)
 
-// This is used for messages but also for other data types
+// Message represents a KV but with Message logic
+type Message struct {
+	Priority uint16
+	ID       []byte
+	Body     []byte
+}
+
+func (m Message) Key() []byte {
+	return append(UInt16ToBytes(m.Priority), m.ID...)
+}
+
+func NewMessageFromKV(kv KVPair) (Message, error) {
+	if len(kv.Key) < 3 {
+		return Message{}, errors.New("invalid key")
+	}
+
+	priority := getUint16(kv.Key)
+	return Message{
+		Priority: priority,
+		ID:       kv.Key[1:],
+		Body:     kv.Val,
+	}, nil
+}
+
+// KVPair is a simple KeyValue pair
 type KVPair struct {
 	// For message the  Key is a 64bit (8 bytes) that contains 2 bytes priority + random bytes
 	Key []byte
@@ -19,33 +44,47 @@ type KVPair struct {
 	Val []byte
 }
 
-func (m KVPair) GetKeyAsUint64() (uint64, error) {
-	if len(m.Key) != 8 {
-		return -1, ErrInvalidKey
+// Clone ensures a copy that do not share the underlying arrays
+// It allocates memory!
+func (p KVPair) Clone() KVPair {
+	result := KVPair{
+		Key: make([]byte, len(p.Key)),
+		Val: make([]byte, len(p.Val)),
 	}
-	return GetUint64(m.Key), nil
+
+	copy(result.Key, p.Key)
+	copy(result.Val, p.Val)
+	return result
 }
+
+//
+//func (m KVPair) GetKeyAsUint64() (uint64, error) {
+//	if len(m.Key) != 8 {
+//		return -1, ErrInvalidKey
+//	}
+//	return getUint64(m.Key), nil
+//}
 
 func UInt64ToBytes(n uint64) []byte {
 	result := make([]byte, 8)
-	WriteUint64(result, n)
+	writeUint64(result, n)
 	return result
 }
 
 func UInt16ToBytes(partition uint16) []byte {
 	buf := make([]byte, 2)
-	WriteUint16(buf, partition)
+	writeUint16(buf, partition)
 	return buf
 }
-func generateMsgKey(priority uint16) []byte {
+func GenerateMsgKey(priority uint16) []byte {
 	priorityPrefix := UInt16ToBytes(priority)
 	randomMsgId := make([]byte, 6)
 	rand.Read(randomMsgId)
 	return append(priorityPrefix, randomMsgId...)
 }
 
-// WriteUint64 encodes a little-endian uint64 into a byte slice.
-func WriteUint64(buf []byte, n uint64) {
+// writeUint64 encodes a little-endian uint64 into a byte slice.
+func writeUint64(buf []byte, n uint64) {
 	_ = buf[7] // Force one bounds check. See: golang.org/issue/14808
 	buf[0] = byte(n)
 	buf[1] = byte(n >> 8)
@@ -57,8 +96,16 @@ func WriteUint64(buf []byte, n uint64) {
 	buf[7] = byte(n >> 56)
 }
 
-// GetUint64 decodes a little-endian uint64 from a byte slice.
-func GetUint64(buf []byte) (n uint64) {
+// getUint16 decodes a little-endian uint16 from a byte slice.
+func getUint16(buf []byte) (n uint16) {
+	_ = buf[1] // Force one bounds check. See: golang.org/issue/14808
+	n |= uint16(buf[0])
+	n |= uint16(buf[1]) << 8
+	return
+}
+
+// getUint64 decodes a little-endian uint64 from a byte slice.
+func getUint64(buf []byte) (n uint64) {
 	_ = buf[7] // Force one bounds check. See: golang.org/issue/14808
 	n |= uint64(buf[0])
 	n |= uint64(buf[1]) << 8
@@ -71,8 +118,8 @@ func GetUint64(buf []byte) (n uint64) {
 	return
 }
 
-// WriteUint16 encodes a little-endian uint16 into a byte slice.
-func WriteUint16(buf []byte, n uint16) {
+// writeUint16 encodes a little-endian uint16 into a byte slice.
+func writeUint16(buf []byte, n uint16) {
 	_ = buf[1] // Force one bounds check. See: golang.org/issue/14808
 	buf[0] = byte(n)
 	buf[1] = byte(n >> 8)

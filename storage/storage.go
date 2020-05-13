@@ -19,32 +19,49 @@ type LocalStorage struct {
 	//for now is only a local DB per node
 	db     *badger.DB
 	logger logrus.FieldLogger
+
+	metadataSingleton *LocalStorageMetadata
+	messagesSingleton *LocalStorageMessages
 }
 
 func (s *LocalStorage) LocalMetadata() *LocalStorageMetadata {
-	return &LocalStorageMetadata{
-		db:     s.db,
-		prefix: []byte("a_"),
-		logger: s.logger.WithField("component", "LocalStorageMetadata"),
-		parent: s,
+	if s.metadataSingleton == nil {
+		s.metadataSingleton = &LocalStorageMetadata{
+			db:     s.db,
+			prefix: []byte("a_"),
+			logger: s.logger.WithField("component", "LocalStorageMetadata"),
+			parent: s,
+		}
 	}
+	return s.metadataSingleton
 }
 
 func (s *LocalStorage) LocalMessages() *LocalStorageMessages {
-	return &LocalStorageMessages{
-		db:     s.db,
-		prefix: []byte("t_"),
-		logger: s.logger.WithField("component", "LocalStorageMessages"),
-		parent: s,
+	if s.messagesSingleton == nil {
+		s.messagesSingleton = &LocalStorageMessages{
+			db:     s.db,
+			prefix: []byte("t_"),
+			logger: s.logger.WithField("component", "LocalStorageMessages"),
+			parent: s,
+		}
 	}
+	return s.messagesSingleton
 }
 
 // NewLocalStorageInMemory is used when persistence/durability is not required, good for integration tests
-func NewLocalStorageInMemory() (*LocalStorage, error) {
-	//TODO
+func NewLocalStorageInMemory(logger logrus.FieldLogger) (*LocalStorage, error) {
+	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open inmemory DB err: %w", err)
+	}
+
+	return &LocalStorage{
+		db:     db,
+		logger: logger,
+	}, nil
 }
 
-// NewLocalStorage spawns a new local storage instance with disk persistence. One node/process should have only one instance of this.
+// NewLocalStorage spawns a new local messages instance with disk persistence. One node/process should have only one instance of this.
 func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalStorage, error) {
 	partitionDBDirectory := fmt.Sprintf("%s/allinone", dataDirectory)
 	//group can have read it for backups, only us for execute
@@ -58,13 +75,15 @@ func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalSto
 	}
 	logger.Infof("opened local badgerDB at %s", partitionDBDirectory)
 
+	//TODO add a ticker goroutine that calls garbage collector!
+
 	return &LocalStorage{
 		db:     db,
 		logger: logger,
 	}, nil
 }
 
-// WriteBatch writes all the entries in a Write Transaction.
+// UpsertMessages writes all the entries in a Write Transaction.
 // It prepends the Prefix to all KEYS!
 func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 	//write to DB
@@ -106,7 +125,7 @@ func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, maxCount int) ([]KVPair,
 			InternalAccess: false,
 		})
 		defer it.Close()
-		for ; it.Valid(); it.Next() {
+		for it.Rewind(); it.Valid(); it.Next() {
 			item := it.Item()
 			val, err := item.ValueCopy(nil)
 			if err != nil {
@@ -125,7 +144,29 @@ func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, maxCount int) ([]KVPair,
 	})
 }
 
-// Close will shutdown and release the lock on all local storage instances derived from it.
+// DeleteBatch can be used to remove a series of keys in a transaction.
+func (s *LocalStorage) DeleteBatch(prefix []byte, keys [][]byte) error {
+	wb := s.db.NewWriteBatch()
+	defer wb.Cancel()
+
+	for _, origKey := range keys {
+		key := make([]byte, len(prefix)+len(origKey))
+		copy(key[:len(prefix)], prefix)
+		copy(key[len(prefix):], origKey)
+
+		err := wb.Delete(key)
+		if err != nil {
+			return errors.Wrap(err, "failed to delete")
+		}
+	}
+	err := wb.Flush()
+	if err != nil {
+		return errors.Wrap(err, "failed to flush")
+	}
+	return nil
+}
+
+// Close will shutdown and release the lock on all local messages instances derived from it.
 func (s *LocalStorage) Close() error {
 	return s.db.Close()
 }
