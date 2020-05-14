@@ -45,6 +45,7 @@ func (s *LocalStorage) LocalMessages() *LocalStorageMessages {
 			parent: s,
 		}
 	}
+
 	return s.messagesSingleton
 }
 
@@ -61,7 +62,8 @@ func NewLocalStorageInMemory(logger logrus.FieldLogger) (*LocalStorage, error) {
 	}, nil
 }
 
-// NewLocalStorage spawns a new local messages instance with disk persistence. One node/process should have only one instance of this.
+// NewLocalStorage spawns a new local messages instance with disk persistence.
+// One node/process should have only one instance of this.
 func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalStorage, error) {
 	partitionDBDirectory := fmt.Sprintf("%s/allinone", dataDirectory)
 	//group can have read it for backups, only us for execute
@@ -104,6 +106,7 @@ func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to flush")
 	}
+
 	return nil
 }
 

@@ -32,6 +32,7 @@ func (m *LocalStorageMessages) UpsertMessages(topic string, partition uint16, ba
 			Val: batch[i].Body,
 		}
 	}
+
 	return m.parent.WriteBatch(prefix, kvs)
 }
 
@@ -45,6 +46,7 @@ func (m *LocalStorageMessages) LowestPriorityMsgs(topic string, partition uint16
 
 	msgs, err := m.parent.ReadFirstsKVPairs(prefix, limit)
 	result := make([]Message, len(msgs))
+
 	var terr error
 	for i := range msgs {
 		result[i], terr = NewMessageFromKV(msgs[i])
@@ -59,9 +61,9 @@ func (m *LocalStorageMessages) prefixForTopicAndPart(topic string, partition uin
 	//these are concat without a delimiter! because they have fixed sizes
 	topicUUID, err := m.metadata.GetTopicUUID(topic)
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrive topics UUID err: %w", err)
+		return nil, fmt.Errorf("cannot retrieve topics UUID err: %w", err)
 	}
-	partitionAsBytes := UInt16ToBytes(partition)
+	partitionAsBytes := uInt16ToBytes(partition)
 	prefix := concatSlices(m.prefix, topicUUID, partitionAsBytes)
 	return prefix, nil
 }

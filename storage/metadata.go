@@ -1,6 +1,7 @@
 package storage
 
 import (
+	//nolint:gosec //md5 not used for security
 	"crypto/md5"
 	"errors"
 
@@ -23,6 +24,7 @@ func (t *LocalStorageMetadata) WriteBatch(batch []KVPair) error {
 
 func (t *LocalStorageMetadata) GetTopicUUID(topic string) ([]byte, error) {
 	result := make([]byte, 16)
+	//nolint:gosec //md5 not used for security
 	hash := md5.Sum([]byte(topic))
 	for i := range hash {
 		result[i] = hash[i]

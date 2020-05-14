@@ -61,7 +61,8 @@ func (suite *InMemoryMessagesSuite) TestProduceAndConsume() {
 	}
 
 	//this also tests Message constructors
-	for _, test := range tests {
+	for _, t := range tests {
+		test := t
 		suite.Run(test.name, func() {
 			err := suite.messages.UpsertMessages(test.name, 42, keysToMsgs(test.input))
 			suite.Assert().NoError(err)
