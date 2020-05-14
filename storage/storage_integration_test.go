@@ -41,6 +41,7 @@ func (suite *InMemoryStorageSuite) TestStorageReadAfterWrite() {
 	suite.Assert().NoError(err)
 
 	result, err = suite.storage.ReadFirstsKVPairs(prefix, 3)
+	suite.Assert().NoError(err)
 	suite.Assert().Len(result, 1)
 	suite.Assert().Equal(sentMsgs[1], result[0])
 }
