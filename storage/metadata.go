@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"crypto/md5"
 	"errors"
 
 	"github.com/dgraph-io/badger/v2"
@@ -21,7 +22,12 @@ func (t *LocalStorageMetadata) WriteBatch(batch []KVPair) error {
 }
 
 func (t *LocalStorageMetadata) GetTopicUUID(topic string) ([]byte, error) {
-	return nil, errors.New("not implemented")
+	result := make([]byte, 16)
+	hash := md5.Sum([]byte(topic))
+	for i := range hash {
+		result[i] = hash[i]
+	}
+	return result, nil
 }
 
 func (t *LocalStorageMetadata) UpsertConsumer(consumerID string) error {

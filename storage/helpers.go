@@ -31,7 +31,7 @@ func NewMessageFromKV(kv KVPair) (Message, error) {
 	priority := getUint16(kv.Key)
 	return Message{
 		Priority: priority,
-		ID:       kv.Key[1:],
+		ID:       kv.Key[2:],
 		Body:     kv.Val,
 	}, nil
 }

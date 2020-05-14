@@ -108,10 +108,14 @@ func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 }
 
 // ReadFirstsKVPairs get the firsts KV pairs with a prefix.
-// It uses a Read Transaction and provides snapshot consistency at the begining of the transaction.
+// It uses a Read Transaction and provides snapshot consistency at the beginning of the transaction.
 // It returns 0 or maxCount elements.
 // It removes the Prefix from the keys!
 func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, maxCount int) ([]KVPair, error) {
+	if maxCount < 1 {
+		s.logger.Warn("received 0 limit for ReadFirstsKVPairs")
+		return []KVPair{}, nil
+	}
 	result := make([]KVPair, 0, maxCount)
 	prefixLength := len(prefix)
 
@@ -133,7 +137,7 @@ func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, maxCount int) ([]KVPair,
 			}
 			result = append(result, KVPair{
 				//remove the prefix
-				Key: item.Key()[prefixLength:],
+				Key: item.KeyCopy(nil)[prefixLength:],
 				Val: val,
 			})
 			if len(result) >= maxCount {
