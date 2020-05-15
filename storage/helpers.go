@@ -1,5 +1,10 @@
 package storage
 
+import (
+	"crypto/rand"
+	"io"
+)
+
 //
 //var (
 //	ErrInvalidKey = errors.New("corrupted message key should be 8 bytes")
@@ -81,4 +86,13 @@ func concatSlices(slices ...[]byte) []byte {
 		i += copy(tmp[i:], s)
 	}
 	return tmp
+}
+
+// newUUID returns a UUID based on bytes read from crypto/rand.Reader
+func newUUID() []byte {
+	uuid := make([]byte, 16)
+	io.ReadFull(rand.Reader, uuid[:])
+	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
+	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant is 10
+	return uuid
 }
