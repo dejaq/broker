@@ -126,7 +126,7 @@ func (s *LocalStorage) ReadPaginate(prefix []byte, limit int, offset int) ([]KVP
 		s.logger.Warn("received 0 limit for ReadFirstsKVPairs")
 		return []KVPair{}, nil
 	}
-	result := make([]KVPair, 0, limit)
+	result := make([]KVPair, 0)
 	prefixLength := len(prefix)
 
 	return result, s.db.View(func(txn *badger.Txn) error {
