@@ -1,41 +1,30 @@
 package storage
 
 import (
-	//nolint:gosec //md5 not used for security
-	"crypto/md5"
-	"errors"
-
-	"github.com/dgraph-io/badger/v2"
-	"github.com/sirupsen/logrus"
+	"encoding/json"
+	"fmt"
+	"time"
 )
 
-// LocalStorageMetadata handles all the cluster metadata that is stored on this node.
-// All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
-type LocalStorageMetadata struct {
-	db     *badger.DB
-	prefix []byte
-	logger logrus.FieldLogger
-	parent *LocalStorage
+// ConsumerMetadata wraps the info we have on a consumer
+// Is is stored in the metadata table with the topicUUID and ID as the key
+// The rest of its properties are stored in the body
+type ConsumerMetadata struct {
+	TopicUUID  string    `json:"-"`
+	ConsumerID string    `json:"-"`
+	LastSeen   time.Time `json:"s"`
 }
 
-func (t *LocalStorageMetadata) WriteBatch(batch []KVPair) error {
-	return t.parent.WriteBatch(t.prefix, batch)
-}
-
-func (t *LocalStorageMetadata) GetTopicUUID(topic string) ([]byte, error) {
-	result := make([]byte, 16)
-	//nolint:gosec //md5 not used for security
-	hash := md5.Sum([]byte(topic))
-	for i := range hash {
-		result[i] = hash[i]
+// asKV is an internal helper to convert into a stored KV with prefix
+func (cm ConsumerMetadata) asKV() (KVPair, error) {
+	body, err := json.Marshal(cm)
+	if err != nil {
+		return KVPair{}, err
 	}
-	return result, nil
-}
-
-func (t *LocalStorageMetadata) UpsertConsumer(consumerID string) error {
-	return errors.New("not implemented")
-}
-
-func (t *LocalStorageMetadata) UpsertTopic(topic string) error {
-	return errors.New("not implemented")
+	keyStr := fmt.Sprintf("topics:%s:consmt_%s", cm.TopicUUID, cm.ConsumerID)
+	return KVPair{
+		//todo avoid memory allocs by using unsafe cast
+		Key: []byte(keyStr),
+		Val: body,
+	}, nil
 }

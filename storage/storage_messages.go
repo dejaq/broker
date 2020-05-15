@@ -7,8 +7,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// LocalStorageMessages handles all the topics logic relative to the local messages.
-// All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
+/* LocalStorageMessages handles all the topics logic relative to the local messages.
+ All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
+
+The keys are as following, without delimiters:
+<topicUUID><partition><priority><msgID> => body
+<32bytes>  <2bytes>  <2bytes>  <6bytes>
+*/
 type LocalStorageMessages struct {
 	db       *badger.DB
 	prefix   []byte
@@ -17,9 +22,10 @@ type LocalStorageMessages struct {
 	metadata *LocalStorageMetadata
 }
 
-// UpsertMessages creates a write transaction for a specific topic and partition.
+// Upsert creates a write transaction for a specific topic and partition.
+// If the messages does not exists it will create them, otherwise their body will be replaced
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
-func (m *LocalStorageMessages) UpsertMessages(topic string, partition uint16, batch []Message) error {
+func (m *LocalStorageMessages) Upsert(topic string, partition uint16, batch []Message) error {
 	prefix, err := m.prefixForTopicAndPart(topic, partition)
 	if err != nil {
 		return err
@@ -36,9 +42,25 @@ func (m *LocalStorageMessages) UpsertMessages(topic string, partition uint16, ba
 	return m.parent.WriteBatch(prefix, kvs)
 }
 
-// LowestPriorityMsgs reads in a transaction the messages with the lowest priority
+// Ack removes the messages to be seen by any consumer
+// The Body of the Message can be empty (Ack operation does not need it)
+func (m *LocalStorageMessages) Ack(topic string, partition uint16, batch []Message) error {
+	prefix, err := m.prefixForTopicAndPart(topic, partition)
+	if err != nil {
+		return err
+	}
+
+	kvs := make([][]byte, len(batch))
+	for i := range batch {
+		kvs[i] = batch[i].Key()
+	}
+
+	return m.parent.DeleteBatch(prefix, kvs)
+}
+
+// GetLowestPriority reads in a transaction the messages with the lowest priority
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
-func (m *LocalStorageMessages) LowestPriorityMsgs(topic string, partition uint16, limit int) ([]Message, error) {
+func (m *LocalStorageMessages) GetLowestPriority(topic string, partition uint16, limit int) ([]Message, error) {
 	prefix, err := m.prefixForTopicAndPart(topic, partition)
 	if err != nil {
 		return nil, err
