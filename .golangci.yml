@@ -26,6 +26,7 @@ run:
   # on Windows.
   skip-dirs:
     - pkg/synchronization
+    - generated*
 
   # default is true. Enables skipping of directories:
   #   vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
@@ -48,7 +49,7 @@ run:
   # directory holds the correct copies of dependencies and ignores
   # the dependency descriptions in go.mod.
   # ex: readonly|release|vendor
-  modules-download-mode: ""
+  modules-download-mode: "readonly"
 
   # Allow multiple parallel golangci-lint instances running.
   # If false (default) - golangci-lint acquires file lock on start.
@@ -81,7 +82,7 @@ linters-settings:
   errcheck:
     # report about not checking of errors in type assertions: `a := b.(MyStruct)`;
     # default is false: such cases aren't reported by default.
-    check-type-assertions: false
+    check-type-assertions: true
 
     # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`;
     # default is false: such cases aren't reported by default.
@@ -312,9 +313,10 @@ issues:
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
     # Exclude some linters from running on tests files.
-    #    - path: _test\.go
-    #      linters:
-    #        - gocyclo
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - gosec
 
     # Exclude known linters from partially hard-vendored code,
     # which is impossible to exclude via "nolint" comments.
