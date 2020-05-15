@@ -86,6 +86,11 @@ func (t *LocalStorageMetadata) TopicMetadata(topicID string) (TopicMetadata, err
 	return result, nil
 }
 
+// Topics returns all the topics
+func (t *LocalStorageMetadata) Topics() ([]TopicMetadata, error) {
+	return nil, errors.New("not implemented")
+}
+
 // UpsertConsumersMetadata can be used to update a consumer's presence.
 // If it does not exists it will insert it.
 // The batch is written as a transaction.
@@ -122,7 +127,6 @@ func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 
 		//TODO remove also its assigned
 		//remove: topics:cp:<topicUUID>:<consumerID> => the assigned partitions
-
 	}
 
 	return t.parent.DeleteBatch(t.prefix, kvs)

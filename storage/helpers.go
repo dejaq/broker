@@ -91,6 +91,7 @@ func concatSlices(slices ...[]byte) []byte {
 // newUUID returns a UUID based on bytes read from crypto/rand.Reader
 func newUUID() []byte {
 	uuid := make([]byte, 16)
+	//nolint:errcheck,gosec //cannot fail
 	io.ReadFull(rand.Reader, uuid[:])
 	uuid[6] = (uuid[6] & 0x0f) | 0x40 // Version 4
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant is 10

@@ -31,8 +31,8 @@ func (suite *InMemoryMetadataSuite) SetupTest() {
 
 	suite.metadata = storage.LocalMetadata()
 }
-func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 
+func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 	tests := []struct {
 		name       string
 		inputID    string
@@ -131,8 +131,8 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 			//test GET for each topic
 			var gotCons []ConsumerMetadata
 			for _, topic := range topics {
-				got, err := suite.metadata.ConsumersMetadata(topic)
-				suite.Require().NoError(err)
+				got, errGet := suite.metadata.ConsumersMetadata(topic)
+				suite.Require().NoError(errGet)
 				gotCons = append(gotCons, got...)
 			}
 			suite.Require().ElementsMatch(test.input, gotCons)
