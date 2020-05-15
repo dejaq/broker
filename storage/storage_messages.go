@@ -33,6 +33,9 @@ func (m *LocalStorageMessages) Upsert(topic string, partition uint16, batch []Me
 
 	kvs := make([]KVPair, len(batch))
 	for i := range batch {
+		if !IsMsgBodyValid(batch[i].Body) {
+			return ErrMessageInvalid
+		}
 		kvs[i] = KVPair{
 			Key: batch[i].Key(),
 			Val: batch[i].Body,

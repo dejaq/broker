@@ -28,7 +28,7 @@ func (s *LocalStorage) LocalMetadata() *LocalStorageMetadata {
 	if s.metadataSingleton == nil {
 		s.metadataSingleton = &LocalStorageMetadata{
 			db:     s.db,
-			prefix: []byte("a_"),
+			prefix: []byte("a:"),
 			logger: s.logger.WithField("component", "LocalStorageMetadata"),
 			parent: s,
 		}
@@ -40,7 +40,7 @@ func (s *LocalStorage) LocalMessages() *LocalStorageMessages {
 	if s.messagesSingleton == nil {
 		s.messagesSingleton = &LocalStorageMessages{
 			db:     s.db,
-			prefix: []byte("t_"),
+			prefix: []byte("t:"),
 			logger: s.logger.WithField("component", "LocalStorageMessages"),
 			parent: s,
 		}
@@ -184,6 +184,25 @@ func (s *LocalStorage) DeleteBatch(prefix []byte, keys [][]byte) error {
 		return errors.Wrap(err, "failed to flush")
 	}
 	return nil
+}
+
+// Insert will fail if the key already exists
+func (s *LocalStorage) Insert(prefix []byte, kv KVPair) error {
+	txn := s.db.NewTransaction(true)
+	defer txn.Discard()
+
+	key := concatSlices(prefix, kv.Key)
+
+	_, err := txn.Get(key)
+	if err != badger.ErrKeyNotFound {
+		return ErrAlreadyExists
+	}
+
+	err = txn.Set(key, kv.Val)
+	if err != nil {
+		return err
+	}
+	return txn.Commit()
 }
 
 // Close will shutdown and release the lock on all local messages instances derived from it.

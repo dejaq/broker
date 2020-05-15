@@ -1,27 +1,32 @@
 package storage
 
 import (
-	//nolint:gosec //md5 not used for security
-	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/dgraph-io/badger/v2"
 	"github.com/sirupsen/logrus"
 )
 
+var ErrNotFound = errors.New("not found")
+var ErrAlreadyExists = errors.New("already exists")
+
 /* LocalStorageMetadata handles all the cluster metadata that is stored on this node.
  All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
 
 The data is kept under these format/prefixes (Key => Value)
 
-topics:<topicUUID>:consmt_<consumerID> => metadata like lastseen
-topics:<topicUUID>:conspa_<consumerID> => the assigned partitions
-topics:<topicUUID>:mt => topics metadata like no of partitions
+topics:cm:<topicUUID>:<consumerID> => metadata like lastseen
+topics:cp:<topicUUID>:<consumerID> => the assigned partitions
+topics:mt:<topicID> => topics metadata like the UUID and no of partitions
 
 TopicUUID is 16bytes
-consumerID is not bounded (provided by the clients)
+For limits of consumerID and topicID see limits.go
 
+
+When calling *LocalStorage the struct prefix has to be used. In badgerDB the full key would be
+a:topics:cm:<topicUUID>:<consumerID> because this struct receives a prefix of "a:"
 */
 type LocalStorageMetadata struct {
 	db     *badger.DB
@@ -30,12 +35,53 @@ type LocalStorageMetadata struct {
 	parent *LocalStorage
 }
 
-func (t *LocalStorageMetadata) GetTopicUUID(topic string) ([]byte, error) {
-	result := make([]byte, 16)
-	//nolint:gosec //md5 not used for security
-	hash := md5.Sum([]byte(topic))
-	for i := range hash {
-		result[i] = hash[i]
+// CreateTopic appends an immutable Topic
+func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) error {
+	if !IsTopicIDValid(topicID) {
+		return ErrTopicIDInvalid
+	}
+	if !IsTopicPartitionsCountValid(partitionsCount) {
+		return ErrTopicPartitionsInvalid
+	}
+
+	mt := TopicMetadata{
+		TopicID:         topicID,
+		TopicUUID:       newUUID(),
+		PartitionsCount: partitionsCount,
+	}
+	key := concatSlices([]byte("topics:mt:"), mt.TopicUUID)
+	body, err := json.Marshal(mt)
+	if err != nil {
+		return err
+	}
+
+	return t.parent.Insert(t.prefix, KVPair{
+		Key: key,
+		Val: body,
+	})
+}
+
+// GetTopicMetadata returns the topic info, an error or ErrNotFound
+func (t *LocalStorageMetadata) GetTopicMetadata(topic string) (TopicMetadata, error) {
+	if !IsTopicIDValid(topic) {
+		return TopicMetadata{}, ErrTopicIDInvalid
+	}
+	keyStr := fmt.Sprintf("topics:mt:%s", topic)
+	prefix := concatSlices(t.prefix, []byte(keyStr))
+	topicsAsKV, err := t.parent.ReadPaginate(prefix, 1, 0)
+	if err != nil {
+		return TopicMetadata{}, err
+	}
+	if len(topicsAsKV) == 0 {
+		return TopicMetadata{}, ErrNotFound
+	}
+
+	result := TopicMetadata{
+		TopicID: topic,
+	}
+	err = json.Unmarshal(topicsAsKV[0].Val, &result)
+	if err != nil {
+		return result, err
 	}
 	return result, nil
 }
@@ -49,6 +95,9 @@ func (t *LocalStorageMetadata) UpsertConsumersMetadata(cons []ConsumerMetadata) 
 	var err error
 
 	for i := range cons {
+		if !IsConsumerIDValid(cons[i].ConsumerID) {
+			return ErrConsumerInvalid
+		}
 		kvs[i], err = cons[i].asKV()
 		if err != nil {
 			return fmt.Errorf("failed transforming to KV: %w", err)
@@ -63,7 +112,7 @@ func (t *LocalStorageMetadata) UpsertConsumersMetadata(cons []ConsumerMetadata) 
 func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 	kvs := make([][]byte, 0, len(cons)*2)
 
-	//remove: topics:<topicUUID>:consmt_<consumerID> => metadata like lastseen
+	//remove: topics:cp<topicUUID>:<consumerID> => metadata like lastseen
 	for i := range cons {
 		kv, err := cons[i].asKV()
 		if err != nil {
@@ -72,7 +121,7 @@ func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 		kvs = append(kvs, kv.Key)
 
 		//TODO remove also its assigned
-		//remove: topics:<topicUUID>:conspa_<consumerID> => the assigned partitions
+		//remove: topics:cp:<topicUUID>:<consumerID> => the assigned partitions
 
 	}
 
@@ -81,11 +130,11 @@ func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 
 // ConsumersMetadata can retrieve ALL the consumers
 func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string) ([]ConsumerMetadata, error) {
-	//remove: topics:<topicUUID>:consmt_<consumerID> => metadata like lastseen
-	keyPrefix := []byte(fmt.Sprintf("topics:%s:consmt_", topicUUID))
+	//remove: topics:cm:<topicUUID>:<consumerID> => metadata like lastseen
+	keyPrefix := []byte(fmt.Sprintf("topics:cm:%s:", topicUUID))
 
 	//since we do not have a pagination system just get them all 1M hard limit for now
-	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, keyPrefix), 1000000, 0)
+	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, keyPrefix), MaxConsumersPerTopic, 0)
 	if err != nil {
 		return nil, err
 	}

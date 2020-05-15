@@ -21,10 +21,23 @@ func (cm ConsumerMetadata) asKV() (KVPair, error) {
 	if err != nil {
 		return KVPair{}, err
 	}
-	keyStr := fmt.Sprintf("topics:%s:consmt_%s", cm.TopicUUID, cm.ConsumerID)
+	keyStr := fmt.Sprintf("topics:cm:%s:%s", cm.TopicUUID, cm.ConsumerID)
 	return KVPair{
 		//todo avoid memory allocs by using unsafe cast
 		Key: []byte(keyStr),
 		Val: body,
 	}, nil
+}
+
+// ConsumerPartitions is a container for all Partitions owned by a ConsumerID
+type ConsumerPartitions struct {
+	ConsumerID string
+	Partitions []uint16
+}
+
+// TopicMetadata holds the basic info for a topic
+type TopicMetadata struct {
+	TopicID         string `json:"-"`
+	TopicUUID       []byte `json:"u"`
+	PartitionsCount int    `json:"p"`
 }
