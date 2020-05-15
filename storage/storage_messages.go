@@ -1,18 +1,20 @@
 package storage
 
 import (
-	"fmt"
-
 	"github.com/dgraph-io/badger/v2"
 	"github.com/sirupsen/logrus"
 )
 
-/* LocalStorageMessages handles all the topics logic relative to the local messages.
+/* LocalStorageMessages handles all the topics logic relative to the local metadata.
  All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
 
 The keys are as following, without delimiters:
 <topicUUID><partition><priority><msgID> => body
 <32bytes>  <2bytes>  <2bytes>  <6bytes>
+
+
+When calling *LocalStorage the struct prefix has to be used. In badgerDB the full key would be
+t:<topicUUID><partition><priority><msgID> because this struct receives a prefix of "t:"
 */
 type LocalStorageMessages struct {
 	db       *badger.DB
@@ -23,10 +25,10 @@ type LocalStorageMessages struct {
 }
 
 // Upsert creates a write transaction for a specific topic and partition.
-// If the messages does not exists it will create them, otherwise their body will be replaced
+// If the metadata does not exists it will create them, otherwise their body will be replaced
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
-func (m *LocalStorageMessages) Upsert(topic string, partition uint16, batch []Message) error {
-	prefix, err := m.prefixForTopicAndPart(topic, partition)
+func (m *LocalStorageMessages) Upsert(topicUUID []byte, partition uint16, batch []Message) error {
+	prefix, err := m.prefixForTopicAndPart(topicUUID, partition)
 	if err != nil {
 		return err
 	}
@@ -45,10 +47,10 @@ func (m *LocalStorageMessages) Upsert(topic string, partition uint16, batch []Me
 	return m.parent.WriteBatch(prefix, kvs)
 }
 
-// Ack removes the messages to be seen by any consumer
+// Ack removes the metadata to be seen by any consumer
 // The Body of the Message can be empty (Ack operation does not need it)
-func (m *LocalStorageMessages) Ack(topic string, partition uint16, batch []Message) error {
-	prefix, err := m.prefixForTopicAndPart(topic, partition)
+func (m *LocalStorageMessages) Ack(topicUUID []byte, partition uint16, batch []Message) error {
+	prefix, err := m.prefixForTopicAndPart(topicUUID, partition)
 	if err != nil {
 		return err
 	}
@@ -61,10 +63,10 @@ func (m *LocalStorageMessages) Ack(topic string, partition uint16, batch []Messa
 	return m.parent.DeleteBatch(prefix, kvs)
 }
 
-// GetLowestPriority reads in a transaction the messages with the lowest priority
+// GetLowestPriority reads in a transaction the metadata with the lowest priority
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
-func (m *LocalStorageMessages) GetLowestPriority(topic string, partition uint16, limit int) ([]Message, error) {
-	prefix, err := m.prefixForTopicAndPart(topic, partition)
+func (m *LocalStorageMessages) GetLowestPriority(topicUUID []byte, partition uint16, limit int) ([]Message, error) {
+	prefix, err := m.prefixForTopicAndPart(topicUUID, partition)
 	if err != nil {
 		return nil, err
 	}
@@ -82,13 +84,9 @@ func (m *LocalStorageMessages) GetLowestPriority(topic string, partition uint16,
 	return result, err
 }
 
-func (m *LocalStorageMessages) prefixForTopicAndPart(topic string, partition uint16) ([]byte, error) {
-	//these are concat without a delimiter! because they have fixed sizes
-	topicUUID, err := m.metadata.GetTopicUUID(topic)
-	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve topics UUID err: %w", err)
-	}
+func (m *LocalStorageMessages) prefixForTopicAndPart(topicUUID []byte, partition uint16) ([]byte, error) {
 	partitionAsBytes := uInt16ToBytes(partition)
+	//these are concat without a delimiter! because they have fixed sizes
 	prefix := concatSlices(m.prefix, topicUUID, partitionAsBytes)
 	return prefix, nil
 }

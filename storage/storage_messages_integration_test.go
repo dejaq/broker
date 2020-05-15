@@ -23,7 +23,7 @@ func (suite *InMemoryMessagesSuite) SetupTest() {
 // Test that removing a msg does not affect other partition or priority
 func (suite *InMemoryMessagesSuite) TestDelete() {
 	key := []byte("key3")
-	topic := "singleton"
+	topic := []byte("singleton")
 
 	p1 := keysToMsgs([][]byte{key}, 87)
 	err := suite.messages.Upsert(topic, 42, p1)
@@ -59,10 +59,10 @@ func (suite *InMemoryMessagesSuite) TestDelete() {
 
 func (suite *InMemoryMessagesSuite) TestSeparationOfTopics() {
 	key := []byte("key3")
-	topic1 := "topic1"
-	topic2 := "topic2"
+	topic1 := []byte("topic1")
+	topic2 := []byte("topic2")
 
-	for _, t := range []string{topic1, topic2} {
+	for _, t := range [][]byte{topic1, topic2} {
 		p1 := keysToMsgs([][]byte{key}, 42)
 		err := suite.messages.Upsert(t, 42, p1)
 		suite.Assert().NoError(err)
@@ -131,10 +131,10 @@ func (suite *InMemoryMessagesSuite) TestOrderedKeysInAPriority() {
 	for _, t := range tests {
 		test := t
 		suite.Run(test.name, func() {
-			err := suite.messages.Upsert(test.name, 42, keysToMsgs(test.input, 1))
+			err := suite.messages.Upsert([]byte(test.name), 42, keysToMsgs(test.input, 1))
 			suite.Assert().NoError(err)
 
-			got, err := suite.messages.GetLowestPriority(test.name, 42, test.limit)
+			got, err := suite.messages.GetLowestPriority([]byte(test.name), 42, test.limit)
 			suite.Assert().NoError(err)
 			if suite.Assert().Equal(len(test.orderedOutput), len(got)) {
 				for i := range got {
@@ -151,7 +151,7 @@ func (suite *InMemoryMessagesSuite) TestOrderedKeysInMultiplePrioritiesAndPartit
 	k3 := []byte("key3")
 
 	//each test will be run for each partition / topic
-	topics := []string{"topic1"} //, "megatopic"}
+	topics := [][]byte{[]byte("topic1")} //, "megatopic"}
 	partitions := []uint16{0, 87, 42}
 
 	tests := []struct {

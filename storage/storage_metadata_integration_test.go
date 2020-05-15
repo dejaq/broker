@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -8,26 +9,84 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type consumerMetadataSet map[string]ConsumerMetadata
-
-func (cs consumerMetadataSet) Contains(c ConsumerMetadata) bool {
-	_, ok := cs[c.ConsumerID]
-	return ok
-}
-func (cs consumerMetadataSet) Remove(c ConsumerMetadata) {
-	delete(cs, c.ConsumerID)
-}
+//
+//type consumerMetadataSet map[string]ConsumerMetadata
+//
+//func (cs consumerMetadataSet) Contains(c ConsumerMetadata) bool {
+//	_, ok := cs[c.ConsumerID]
+//	return ok
+//}
+//func (cs consumerMetadataSet) Remove(c ConsumerMetadata) {
+//	delete(cs, c.ConsumerID)
+//}
 
 type InMemoryMetadataSuite struct {
 	suite.Suite
-	messages *LocalStorageMetadata
+	metadata *LocalStorageMetadata
 }
 
 func (suite *InMemoryMetadataSuite) SetupTest() {
 	storage, err := NewLocalStorageInMemory(logrus.StandardLogger())
 	suite.Require().NoError(err)
 
-	suite.messages = storage.LocalMetadata()
+	suite.metadata = storage.LocalMetadata()
+}
+func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
+
+	tests := []struct {
+		name       string
+		inputID    string
+		inputParts int
+		shouldErr  error
+	}{
+		{
+			name:       "noName",
+			inputID:    "",
+			inputParts: 42,
+			shouldErr:  ErrTopicIDInvalid,
+		},
+		{
+			name:       "nameTooLong",
+			inputID:    strings.Repeat("a", 1025),
+			inputParts: 42,
+			shouldErr:  ErrTopicIDInvalid,
+		},
+		{
+			name:       "nameOK",
+			inputID:    "perfectName01_-[]',./(){}",
+			inputParts: 42,
+			shouldErr:  nil,
+		},
+		{
+			//this relies on the order of tests
+			name:       "duplicate",
+			inputID:    "perfectName01_-[]',./(){}",
+			inputParts: 42,
+			shouldErr:  ErrAlreadyExists,
+		},
+	}
+
+	for _, t := range tests {
+		test := t
+		suite.Run(test.name, func() {
+			mtInsert, gotErr := suite.metadata.CreateTopic(test.inputID, test.inputParts)
+			suite.Require().Equal(test.shouldErr, gotErr)
+
+			if gotErr != nil {
+				//TODO add list all topics and assert doesnt contain the ID
+				return
+			}
+			suite.Require().Equal(test.inputID, mtInsert.TopicID)
+			suite.Require().Equal(test.inputParts, mtInsert.PartitionsCount)
+			suite.Require().NotEmpty(mtInsert.TopicUUID)
+
+			mt, err := suite.metadata.TopicMetadata(test.inputID)
+			suite.Require().NoError(err)
+			suite.Require().Equal(test.inputID, mt.TopicID)
+			suite.Require().Equal(test.inputParts, mt.PartitionsCount)
+			suite.Require().Equal(mtInsert.TopicUUID, mt.TopicUUID)
+		})
+	}
 }
 
 func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
@@ -66,25 +125,25 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 		test := t
 		suite.Run(test.name, func() {
 			//add all of them
-			err := suite.messages.UpsertConsumersMetadata(test.input)
+			err := suite.metadata.UpsertConsumersMetadata(test.input)
 			suite.Require().NoError(err)
 
 			//test GET for each topic
 			var gotCons []ConsumerMetadata
 			for _, topic := range topics {
-				got, err := suite.messages.ConsumersMetadata(topic)
+				got, err := suite.metadata.ConsumersMetadata(topic)
 				suite.Require().NoError(err)
 				gotCons = append(gotCons, got...)
 			}
 			suite.Require().ElementsMatch(test.input, gotCons)
 
 			//remove all of them
-			err = suite.messages.RemoveConsumers(test.input)
+			err = suite.metadata.RemoveConsumers(test.input)
 			suite.Require().NoError(err)
 
 			//test that DELETE worked
 			for _, topic := range topics {
-				got, err := suite.messages.ConsumersMetadata(topic)
+				got, err := suite.metadata.ConsumersMetadata(topic)
 				suite.Require().NoError(err)
 
 				suite.Require().Len(got, 0)
