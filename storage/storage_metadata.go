@@ -9,8 +9,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var ErrNotFound = errors.New("not found")
-var ErrAlreadyExists = errors.New("already exists")
+var (
+	ErrNotFound       = errors.New("not found")
+	ErrAlreadyExists  = errors.New("already exists")
+	topicsMetaKeyByID = []byte("topics:mt:")
+)
 
 /* LocalStorageMetadata handles all the cluster metadata that is stored on this node.
  All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
@@ -36,12 +39,12 @@ type LocalStorageMetadata struct {
 }
 
 // CreateTopic appends an immutable Topic
-func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) error {
+func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) (TopicMetadata, error) {
 	if !IsTopicIDValid(topicID) {
-		return ErrTopicIDInvalid
+		return TopicMetadata{}, ErrTopicIDInvalid
 	}
 	if !IsTopicPartitionsCountValid(partitionsCount) {
-		return ErrTopicPartitionsInvalid
+		return TopicMetadata{}, ErrTopicPartitionsInvalid
 	}
 
 	mt := TopicMetadata{
@@ -49,25 +52,22 @@ func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) 
 		TopicUUID:       newUUID(),
 		PartitionsCount: partitionsCount,
 	}
-	key := concatSlices([]byte("topics:mt:"), mt.TopicUUID)
+	key := concatSlices(topicsMetaKeyByID, []byte(topicID))
 	body, err := json.Marshal(mt)
 	if err != nil {
-		return err
+		return TopicMetadata{}, err
 	}
 
-	return t.parent.Insert(t.prefix, KVPair{
+	return mt, t.parent.Insert(t.prefix, KVPair{
 		Key: key,
 		Val: body,
 	})
 }
 
-// GetTopicMetadata returns the topic info, an error or ErrNotFound
-func (t *LocalStorageMetadata) GetTopicMetadata(topic string) (TopicMetadata, error) {
-	if !IsTopicIDValid(topic) {
-		return TopicMetadata{}, ErrTopicIDInvalid
-	}
-	keyStr := fmt.Sprintf("topics:mt:%s", topic)
-	prefix := concatSlices(t.prefix, []byte(keyStr))
+// TopicMetadata returns the topic info, an error or ErrNotFound
+func (t *LocalStorageMetadata) TopicMetadata(topicID string) (TopicMetadata, error) {
+	//todo avoid memory allocs use unsafe for topicID
+	prefix := concatSlices(t.prefix, topicsMetaKeyByID, []byte(topicID))
 	topicsAsKV, err := t.parent.ReadPaginate(prefix, 1, 0)
 	if err != nil {
 		return TopicMetadata{}, err
@@ -77,7 +77,7 @@ func (t *LocalStorageMetadata) GetTopicMetadata(topic string) (TopicMetadata, er
 	}
 
 	result := TopicMetadata{
-		TopicID: topic,
+		TopicID: topicID,
 	}
 	err = json.Unmarshal(topicsAsKV[0].Val, &result)
 	if err != nil {

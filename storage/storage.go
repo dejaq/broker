@@ -24,6 +24,7 @@ type LocalStorage struct {
 	messagesSingleton *LocalStorageMessages
 }
 
+// LocalMetadata is the constructor for a Metadata storage
 func (s *LocalStorage) LocalMetadata() *LocalStorageMetadata {
 	if s.metadataSingleton == nil {
 		s.metadataSingleton = &LocalStorageMetadata{
@@ -36,6 +37,7 @@ func (s *LocalStorage) LocalMetadata() *LocalStorageMetadata {
 	return s.metadataSingleton
 }
 
+// LocalMessages constructs a storage for metadata
 func (s *LocalStorage) LocalMessages() *LocalStorageMessages {
 	if s.messagesSingleton == nil {
 		s.messagesSingleton = &LocalStorageMessages{
@@ -62,7 +64,7 @@ func NewLocalStorageInMemory(logger logrus.FieldLogger) (*LocalStorage, error) {
 	}, nil
 }
 
-// NewLocalStorage spawns a new local messages instance with disk persistence.
+// NewLocalStorage spawns a new local metadata instance with disk persistence.
 // One node/process should have only one instance of this.
 func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalStorage, error) {
 	partitionDBDirectory := fmt.Sprintf("%s/allinone", dataDirectory)
@@ -85,7 +87,7 @@ func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalSto
 	}, nil
 }
 
-// Upsert writes all the entries in a Write Transaction.
+// WriteBatch writes all the entries in a Write Transaction.
 // It prepends the Prefix to all KEYS!
 func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 	//write to DB
@@ -205,7 +207,7 @@ func (s *LocalStorage) Insert(prefix []byte, kv KVPair) error {
 	return txn.Commit()
 }
 
-// Close will shutdown and release the lock on all local messages instances derived from it.
+// Close will shutdown and release the lock on all local metadata instances derived from it.
 func (s *LocalStorage) Close() error {
 	return s.db.Close()
 }

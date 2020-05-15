@@ -12,8 +12,8 @@ const (
 )
 
 var (
-	ErrTopicIDInvalid         = errors.New("topic ID must have 1-1024 length consists of AlphaNumeric and Control characters. L,N and C Unicode tables")
-	ErrConsumerInvalid        = errors.New("consumer ID must have 1-256 length consists of AlphaNumeric and Control characters. L,N and C Unicode tables")
+	ErrTopicIDInvalid         = errors.New("topic ID must have 1-1024 length consists of AlphaNumeric and Control characters. L, M, N, P, S, Zs Unicode tables")
+	ErrConsumerInvalid        = errors.New("consumer ID must have 1-256 length consists of AlphaNumeric and Control characters. L, M, N, P, S, Zs Unicode tables")
 	ErrMessageInvalid         = errors.New("message must have under 64Kb in size")
 	ErrTopicPartitionsInvalid = errors.New("topic must have between 1 and 65535 partitions")
 )
@@ -25,11 +25,9 @@ func IsTopicIDValid(topic string) bool {
 	}
 
 	for _, r := range topic {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) ||
-			unicode.IsNumber(r) || unicode.IsControl(r) {
-			continue
+		if !unicode.IsGraphic(r) {
+			return false
 		}
-		return false
 	}
 	return true
 }
@@ -46,11 +44,9 @@ func IsConsumerIDValid(consumerID string) bool {
 	}
 
 	for _, r := range consumerID {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) ||
-			unicode.IsNumber(r) || unicode.IsControl(r) {
-			continue
+		if !unicode.IsGraphic(r) {
+			return false
 		}
-		return false
 	}
 	return true
 }
