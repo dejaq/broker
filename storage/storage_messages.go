@@ -17,21 +17,17 @@ When calling *LocalStorage the struct prefix has to be used. In badgerDB the ful
 t:<topicUUID><partition><priority><msgID> because this struct receives a prefix of "t:"
 */
 type LocalStorageMessages struct {
-	db       *badger.DB
-	prefix   []byte
-	logger   logrus.FieldLogger
-	parent   *LocalStorage
-	metadata *LocalStorageMetadata
+	db     *badger.DB
+	prefix []byte
+	logger logrus.FieldLogger
+	parent *LocalStorage
 }
 
 // Upsert creates a write transaction for a specific topic and partition.
 // If the metadata does not exists it will create them, otherwise their body will be replaced
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
 func (m *LocalStorageMessages) Upsert(topicUUID []byte, partition uint16, batch []Message) error {
-	prefix, err := m.prefixForTopicAndPart(topicUUID, partition)
-	if err != nil {
-		return err
-	}
+	prefix := m.prefixForTopicAndPart(topicUUID, partition)
 
 	kvs := make([]KVPair, len(batch))
 	for i := range batch {
@@ -50,10 +46,7 @@ func (m *LocalStorageMessages) Upsert(topicUUID []byte, partition uint16, batch 
 // Ack removes the metadata to be seen by any consumer
 // The Body of the Message can be empty (Ack operation does not need it)
 func (m *LocalStorageMessages) Ack(topicUUID []byte, partition uint16, batch []Message) error {
-	prefix, err := m.prefixForTopicAndPart(topicUUID, partition)
-	if err != nil {
-		return err
-	}
+	prefix := m.prefixForTopicAndPart(topicUUID, partition)
 
 	kvs := make([][]byte, len(batch))
 	for i := range batch {
@@ -66,10 +59,7 @@ func (m *LocalStorageMessages) Ack(topicUUID []byte, partition uint16, batch []M
 // GetLowestPriority reads in a transaction the metadata with the lowest priority
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
 func (m *LocalStorageMessages) GetLowestPriority(topicUUID []byte, partition uint16, limit int) ([]Message, error) {
-	prefix, err := m.prefixForTopicAndPart(topicUUID, partition)
-	if err != nil {
-		return nil, err
-	}
+	prefix := m.prefixForTopicAndPart(topicUUID, partition)
 
 	msgs, err := m.parent.ReadFirstsKVPairs(prefix, limit)
 	result := make([]Message, len(msgs))
@@ -84,9 +74,9 @@ func (m *LocalStorageMessages) GetLowestPriority(topicUUID []byte, partition uin
 	return result, err
 }
 
-func (m *LocalStorageMessages) prefixForTopicAndPart(topicUUID []byte, partition uint16) ([]byte, error) {
+func (m *LocalStorageMessages) prefixForTopicAndPart(topicUUID []byte, partition uint16) []byte {
 	partitionAsBytes := uInt16ToBytes(partition)
 	//these are concat without a delimiter! because they have fixed sizes
 	prefix := concatSlices(m.prefix, topicUUID, partitionAsBytes)
-	return prefix, nil
+	return prefix
 }

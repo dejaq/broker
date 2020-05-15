@@ -12,7 +12,9 @@ const (
 )
 
 var (
-	ErrTopicIDInvalid         = errors.New("topic ID must have 1-1024 length consists of AlphaNumeric and Control characters. L, M, N, P, S, Zs Unicode tables")
+	//nolint:lll //long err
+	ErrTopicIDInvalid = errors.New("topic ID must have 1-1024 length consists of AlphaNumeric and Control characters. L, M, N, P, S, Zs Unicode tables")
+	//nolint:lll //long err
 	ErrConsumerInvalid        = errors.New("consumer ID must have 1-256 length consists of AlphaNumeric and Control characters. L, M, N, P, S, Zs Unicode tables")
 	ErrMessageInvalid         = errors.New("message must have under 64Kb in size")
 	ErrTopicPartitionsInvalid = errors.New("topic must have between 1 and 65535 partitions")
