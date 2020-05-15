@@ -25,7 +25,7 @@ type InMemoryMetadataSuite struct {
 
 func (suite *InMemoryMetadataSuite) SetupTest() {
 	storage, err := NewLocalStorageInMemory(logrus.StandardLogger())
-	suite.Assert().NoError(err)
+	suite.Require().NoError(err)
 
 	suite.messages = storage.LocalMetadata()
 }
@@ -50,30 +50,14 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 	}
 
 	tests := []struct {
-		name           string
-		input          []ConsumerMetadata
-		limit          int
-		offset         int
-		shouldPerTopic map[string]consumerMetadataSet
+		name  string
+		input []ConsumerMetadata
 	}{
 		{name: "fewConsumers",
-			input:  []ConsumerMetadata{c3, c1, c2},
-			limit:  10,
-			offset: 0,
-			shouldPerTopic: map[string]consumerMetadataSet{
-				topics[0]: {c1.ConsumerID: c1, c2.ConsumerID: c2},
-				topics[1]: {c3.ConsumerID: c3},
-			},
+			input: []ConsumerMetadata{c3, c1, c2},
 		},
-		{name: "onlyFirst",
-			input:  []ConsumerMetadata{c3, c1, c2},
-			limit:  1,
-			offset: 0,
-			shouldPerTopic: map[string]consumerMetadataSet{
-				//here only the first introduced should be returned
-				topics[0]: {c1.ConsumerID: c1},
-				topics[1]: {c3.ConsumerID: c3},
-			},
+		{name: "onlyOneTopic",
+			input: []ConsumerMetadata{c3},
 		},
 	}
 
@@ -81,7 +65,30 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 	for _, t := range tests {
 		test := t
 		suite.Run(test.name, func() {
+			//add all of them
+			err := suite.messages.UpsertConsumersMetadata(test.input)
+			suite.Require().NoError(err)
 
+			//test GET for each topic
+			var gotCons []ConsumerMetadata
+			for _, topic := range topics {
+				got, err := suite.messages.ConsumersMetadata(topic)
+				suite.Require().NoError(err)
+				gotCons = append(gotCons, got...)
+			}
+			suite.Require().ElementsMatch(test.input, gotCons)
+
+			//remove all of them
+			err = suite.messages.RemoveConsumers(test.input)
+			suite.Require().NoError(err)
+
+			//test that DELETE worked
+			for _, topic := range topics {
+				got, err := suite.messages.ConsumersMetadata(topic)
+				suite.Require().NoError(err)
+
+				suite.Require().Len(got, 0)
+			}
 		})
 	}
 }

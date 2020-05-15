@@ -118,6 +118,9 @@ func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, limit int) ([]KVPair, er
 	return s.ReadPaginate(prefix, limit, 0)
 }
 
+// ReadPaginate is a brutal way of paginating. It does not guarantee that data does not change
+// between calls so items may be missing or overlap.
+// TODO implement a proper pagination, one example would be to make a snapshot but it will work for one node only.
 func (s *LocalStorage) ReadPaginate(prefix []byte, limit int, offset int) ([]KVPair, error) {
 	if limit < 1 {
 		s.logger.Warn("received 0 limit for ReadFirstsKVPairs")
@@ -128,7 +131,8 @@ func (s *LocalStorage) ReadPaginate(prefix []byte, limit int, offset int) ([]KVP
 
 	return result, s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{
-			PrefetchValues: true,
+			//only prefetch all values if this is the first page
+			PrefetchValues: offset == 0,
 			PrefetchSize:   limit,
 			Reverse:        false,
 			AllVersions:    false,
@@ -136,7 +140,12 @@ func (s *LocalStorage) ReadPaginate(prefix []byte, limit int, offset int) ([]KVP
 			InternalAccess: false,
 		})
 		defer it.Close()
+		index := 0
 		for it.Rewind(); it.Valid(); it.Next() {
+			index++
+			if index <= offset {
+				continue
+			}
 			item := it.Item()
 			val, err := item.ValueCopy(nil)
 			if err != nil {

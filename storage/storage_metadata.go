@@ -61,7 +61,7 @@ func (t *LocalStorageMetadata) UpsertConsumersMetadata(cons []ConsumerMetadata) 
 // RemoveConsumers deletes all the metadata entries of a consumerID
 // in the context of a topic. It uses a single transaction.
 func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
-	kvs := make([][]byte, len(cons))
+	kvs := make([][]byte, 0, len(cons)*2)
 
 	//remove: topics:<topicUUID>:consmt_<consumerID> => metadata like lastseen
 	for i := range cons {
@@ -69,23 +69,23 @@ func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 		if err != nil {
 			return fmt.Errorf("failed transforming to KV: %w", err)
 		}
-		kvs[i] = kv.Key
-	}
+		kvs = append(kvs, kv.Key)
 
-	//TODO remove also its assigned
-	//remove: topics:<topicUUID>:conspa_<consumerID> => the assigned partitions
+		//TODO remove also its assigned
+		//remove: topics:<topicUUID>:conspa_<consumerID> => the assigned partitions
+
+	}
 
 	return t.parent.DeleteBatch(t.prefix, kvs)
 }
 
-// ConsumersMetadata can paginate trough the consumers of a topic
-// Consumers can change between 2 calls so pages can overlap or have missing consumers
-// Recommendation: use large limits (>1000)
-func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string, limit, offset int) ([]ConsumerMetadata, error) {
+// ConsumersMetadata can retrieve ALL the consumers
+func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string) ([]ConsumerMetadata, error) {
 	//remove: topics:<topicUUID>:consmt_<consumerID> => metadata like lastseen
 	keyPrefix := []byte(fmt.Sprintf("topics:%s:consmt_", topicUUID))
 
-	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, keyPrefix), limit, offset)
+	//since we do not have a pagination system just get them all 1M hard limit for now
+	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, keyPrefix), 1000000, 0)
 	if err != nil {
 		return nil, err
 	}
