@@ -24,7 +24,7 @@ show-env:
 .PHONY: lint
 lint: show-env
 	@echo ">> apply linters"
-	golangci-lint run
+	cd ./storage && golangci-lint run
 
 #.PHONY: build
 #build: show-env

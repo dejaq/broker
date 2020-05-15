@@ -85,7 +85,7 @@ func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalSto
 	}, nil
 }
 
-// UpsertMessages writes all the entries in a Write Transaction.
+// Upsert writes all the entries in a Write Transaction.
 // It prepends the Prefix to all KEYS!
 func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 	//write to DB
@@ -112,20 +112,24 @@ func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 
 // ReadFirstsKVPairs get the firsts KV pairs with a prefix.
 // It uses a Read Transaction and provides snapshot consistency at the beginning of the transaction.
-// It returns 0 or maxCount elements.
-// It removes the Prefix from the keys!
-func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, maxCount int) ([]KVPair, error) {
-	if maxCount < 1 {
+// It returns 0...<limit> elements.
+// It removes the given Prefix from the keys!
+func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, limit int) ([]KVPair, error) {
+	return s.ReadPaginate(prefix, limit, 0)
+}
+
+func (s *LocalStorage) ReadPaginate(prefix []byte, limit int, offset int) ([]KVPair, error) {
+	if limit < 1 {
 		s.logger.Warn("received 0 limit for ReadFirstsKVPairs")
 		return []KVPair{}, nil
 	}
-	result := make([]KVPair, 0, maxCount)
+	result := make([]KVPair, 0, limit)
 	prefixLength := len(prefix)
 
 	return result, s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{
 			PrefetchValues: true,
-			PrefetchSize:   maxCount,
+			PrefetchSize:   limit,
 			Reverse:        false,
 			AllVersions:    false,
 			Prefix:         prefix,
@@ -143,7 +147,7 @@ func (s *LocalStorage) ReadFirstsKVPairs(prefix []byte, maxCount int) ([]KVPair,
 				Key: item.KeyCopy(nil)[prefixLength:],
 				Val: val,
 			})
-			if len(result) >= maxCount {
+			if len(result) >= limit {
 				break
 			}
 		}

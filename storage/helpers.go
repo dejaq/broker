@@ -1,64 +1,9 @@
 package storage
 
-import (
-	"errors"
-)
-
 //
 //var (
 //	ErrInvalidKey = errors.New("corrupted message key should be 8 bytes")
 //)
-
-// Message represents a KV but with Message logic
-type Message struct {
-	Priority uint16
-	ID       []byte
-	Body     []byte
-}
-
-// Key prepends the priority to the messageID to be stored in
-// a KV store ordered by priority
-func (m Message) Key() []byte {
-	return append(uInt16ToBytes(m.Priority), m.ID...)
-}
-
-// NewMessageFromKV constructs a message from a BadgerKV
-// It does not allocate memory
-func NewMessageFromKV(kv KVPair) (Message, error) {
-	if len(kv.Key) < 3 {
-		return Message{}, errors.New("invalid key")
-	}
-
-	priority := getUint16(kv.Key)
-
-	return Message{
-		Priority: priority,
-		ID:       kv.Key[2:],
-		Body:     kv.Val,
-	}, nil
-}
-
-// KVPair is a simple KeyValue pair
-type KVPair struct {
-	// For message the  Key is a 64bit (8 bytes) that contains 2 bytes priority + random bytes
-	Key []byte
-	// For Message is the body
-	Val []byte
-}
-
-// Clone ensures a copy that do not share the underlying arrays
-// It allocates memory!
-func (p KVPair) Clone() KVPair {
-	result := KVPair{
-		Key: make([]byte, len(p.Key)),
-		Val: make([]byte, len(p.Val)),
-	}
-
-	copy(result.Key, p.Key)
-	copy(result.Val, p.Val)
-
-	return result
-}
 
 //
 //func (m KVPair) GetKeyAsUint64() (uint64, error) {
@@ -81,15 +26,7 @@ func uInt16ToBytes(partition uint16) []byte {
 	return buf
 }
 
-//
-//func GenerateMsgKey(priority uint16) []byte {
-//	priorityPrefix := uInt16ToBytes(priority)
-//	randomMsgId := make([]byte, 6)
-//	rand.Read(randomMsgId)
-//	return append(priorityPrefix, randomMsgId...)
-//}
-//
-//// writeUint64 encodes a little-endian uint64 into a byte slice.
+// writeUint64 encodes a little-endian uint64 into a byte slice.
 //func writeUint64(buf []byte, n uint64) {
 //	_ = buf[7] // Force one bounds check. See: golang.org/issue/14808
 //	buf[0] = byte(n)
