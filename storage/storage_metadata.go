@@ -13,9 +13,12 @@ var (
 	ErrNotFound      = errors.New("not found")
 	ErrAlreadyExists = errors.New("already exists")
 
+	//nolint:gochecknoglobals //reusable prefixes
 	prefixTopicsMetaKeyByID = []byte("topics:mt:")
-	prefixConsMetaByUUID    = []byte("topics:cm:")
-	topicsPartsKeyByID      = []byte("topics:cp:")
+	//nolint:gochecknoglobals //reusable prefixes
+	prefixConsMetaByUUID = []byte("topics:cm:")
+	//nolint:gochecknoglobals //reusable prefixes
+	prefixConsPartsByUUID = []byte("topics:cp:")
 )
 
 /* LocalStorageMetadata handles all the cluster metadata that is stored on this node.
@@ -95,6 +98,9 @@ func (t *LocalStorageMetadata) TopicMetadata(topicID string) (TopicMetadata, err
 // at least one topic is malformed
 func (t *LocalStorageMetadata) Topics() ([]TopicMetadata, error) {
 	kvs, err := t.parent.ReadPaginate(t.prefix, MaxNumberOfTopics, 0)
+	if err != nil {
+		return nil, err
+	}
 	var rerr error
 	result := make([]TopicMetadata, len(kvs))
 	for i := range kvs {
@@ -143,11 +149,11 @@ func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 	for i := range cons {
 		partsPrefixTopic := []byte(cons[i].TopicUUID + ":" + cons[i].ConsumerID)
 
-		//remove: topics:mt<topicUUID>:<consumerID> => metadata like lastseen
-		kvs = append(kvs, concatSlices(t.prefix, prefixTopicsMetaKeyByID, partsPrefixTopic))
+		//remove: topics:cm<topicUUID>:<consumerID> => metadata like lastseen
+		kvs = append(kvs, concatSlices(prefixConsMetaByUUID, partsPrefixTopic))
 
 		//remove: topics:cp:<topicUUID>:<consumerID> => the assigned partitions
-		kvs = append(kvs, concatSlices(t.prefix, topicsPartsKeyByID, partsPrefixTopic))
+		kvs = append(kvs, concatSlices(prefixConsPartsByUUID, partsPrefixTopic))
 	}
 
 	return t.parent.DeleteBatch(t.prefix, kvs)
@@ -187,7 +193,7 @@ func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string) ([]ConsumerMe
 // To get all the consumers use ConsumersMetadata
 func (t *LocalStorageMetadata) ConsumerPartitions(topicUUID string) ([]ConsumerPartitions, error) {
 	topicPrefix := []byte(topicUUID + ":")
-	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, topicsPartsKeyByID, topicPrefix), MaxConsumersPerTopic, 0)
+	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, prefixConsPartsByUUID, topicPrefix), MaxConsumersPerTopic, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +226,7 @@ func (t *LocalStorageMetadata) UpsertConsumerPartitions(topicUUID string, cps []
 		}
 	}
 
-	return t.parent.WriteBatch(concatSlices(t.prefix, topicsPartsKeyByID, topicPrefix), kvs)
+	return t.parent.WriteBatch(concatSlices(t.prefix, prefixConsPartsByUUID, topicPrefix), kvs)
 }
 
 // asKV is an internal helper to convert into a stored KV with prefix

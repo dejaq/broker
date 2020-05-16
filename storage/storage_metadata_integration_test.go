@@ -203,7 +203,10 @@ func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
 			var found bool
 			for _, cg := range got {
 				if cg.ConsumerID == c.ConsumerID {
-					suite.Assert().ElementsMatch(cg.Partitions, c.Partitions, "partitions for cons %s in topic %s were lost", cg.ConsumerID, topic)
+					suite.Assert().
+						ElementsMatch(cg.Partitions, c.Partitions,
+							"partitions for cons %s in topic %s were lost",
+							cg.ConsumerID, topic)
 					found = true
 					break
 				}
@@ -244,7 +247,9 @@ func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
 				break
 			}
 		}
-		suite.Require().Equal(shouldExists, found, "state of consumer in consumer metadata is wrong exp %v got %v for  %s topic %s", shouldExists, found, consumerID, topic)
+		suite.Require().Equal(shouldExists, found,
+			"state of consumer in consumer metadata is wrong exp %v got %v for  %s topic %s",
+			shouldExists, found, consumerID, topic)
 
 		consParts, err := suite.metadata.ConsumerPartitions(topic)
 		suite.Require().NoError(err)
@@ -255,7 +260,10 @@ func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
 				break
 			}
 		}
-		suite.Require().Equal(shouldExists, found, "state of consumer in consumer partitions is wrong exp %v got %v for  %s topic %s", shouldExists, found, consumerID, topic)
+		suite.Require().Equal(
+			shouldExists, found,
+			"state of consumer in consumer partitions is wrong exp %v got %v for  %s topic %s",
+			shouldExists, found, consumerID, topic)
 	}
 
 	//add all of them
