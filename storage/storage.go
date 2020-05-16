@@ -64,7 +64,7 @@ func NewLocalStorageInMemory(logger logrus.FieldLogger) (*LocalStorage, error) {
 	}, nil
 }
 
-// NewLocalStorage spawns a new local metadata instance with disk persistence.
+// NewLocalStorage spawns a new local database instance with disk persistence.
 // One node/process should have only one instance of this.
 func NewLocalStorage(dataDirectory string, logger logrus.FieldLogger) (*LocalStorage, error) {
 	partitionDBDirectory := fmt.Sprintf("%s/allinone", dataDirectory)

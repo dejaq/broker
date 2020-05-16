@@ -27,7 +27,7 @@ func (suite *InMemoryStorageSuite) TestStorageReadAfterWrite() {
 	}
 	prefix := []byte("readafterwrite")
 
-	//we clone it to also check for side effects in the metadata
+	//we clone it to also check for side effects in the kvpairs
 	err := suite.storage.WriteBatch(prefix, cloneKVSlice(sentMsgs))
 	suite.Assert().NoError(err)
 
