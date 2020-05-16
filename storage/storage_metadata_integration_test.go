@@ -66,6 +66,9 @@ func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 		},
 	}
 
+	//a set of topicIDs to be checked later for existence
+	successIDs := map[string]struct{}{tests[2].inputID: {}}
+
 	for _, t := range tests {
 		test := t
 		suite.Run(test.name, func() {
@@ -73,7 +76,6 @@ func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 			suite.Require().Equal(test.shouldErr, gotErr)
 
 			if gotErr != nil {
-				//TODO add list all topics and assert doesnt contain the ID
 				return
 			}
 			suite.Require().Equal(test.inputID, mtInsert.TopicID)
@@ -86,6 +88,23 @@ func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 			suite.Require().Equal(test.inputParts, mt.PartitionsCount)
 			suite.Require().Equal(mtInsert.TopicUUID, mt.TopicUUID)
 		})
+	}
+
+	//now we test the topic()
+	topics, err := suite.metadata.Topics()
+	suite.Require().NoError(err)
+	suite.Require().Len(topics, len(successIDs))
+	for topicID := range successIDs {
+		var found bool
+		for _, t := range topics {
+			if t.TopicID == topicID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			suite.Require().Failf("topics() failed", "topic %s was not returned by topics()", topicID)
+		}
 	}
 }
 
