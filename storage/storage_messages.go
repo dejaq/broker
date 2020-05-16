@@ -5,7 +5,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-/* LocalStorageMessages handles all the topics logic relative to the local metadata.
+/* LocalStorageMessages handles all the topics logic relative to the local messages.
  All the Input and Output keys of all methods will NOT contain the prefix (they are relative keys)
 
 The keys are as following, without delimiters:
@@ -24,7 +24,7 @@ type LocalStorageMessages struct {
 }
 
 // Upsert creates a write transaction for a specific topic and partition.
-// If the metadata does not exists it will create them, otherwise their body will be replaced
+// If the messages does not exists it will create them, otherwise their body will be replaced
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
 func (m *LocalStorageMessages) Upsert(topicUUID []byte, partition uint16, batch []Message) error {
 	prefix := m.prefixForTopicAndPart(topicUUID, partition)
@@ -43,7 +43,7 @@ func (m *LocalStorageMessages) Upsert(topicUUID []byte, partition uint16, batch 
 	return m.parent.WriteBatch(prefix, kvs)
 }
 
-// Ack removes the metadata to be seen by any consumer
+// Ack removes the messages to be seen by any consumer
 // The Body of the Message can be empty (Ack operation does not need it)
 func (m *LocalStorageMessages) Ack(topicUUID []byte, partition uint16, batch []Message) error {
 	prefix := m.prefixForTopicAndPart(topicUUID, partition)
@@ -56,7 +56,7 @@ func (m *LocalStorageMessages) Ack(topicUUID []byte, partition uint16, batch []M
 	return m.parent.DeleteBatch(prefix, kvs)
 }
 
-// GetLowestPriority reads in a transaction the metadata with the lowest priority
+// GetLowestPriority reads in a transaction the messages with the lowest priority
 // the Keys of KVPairs should NOT have the topic/partition prefixes, they are prepended in this method
 func (m *LocalStorageMessages) GetLowestPriority(topicUUID []byte, partition uint16, limit int) ([]Message, error) {
 	prefix := m.prefixForTopicAndPart(topicUUID, partition)
