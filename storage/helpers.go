@@ -97,3 +97,22 @@ func newUUID() []byte {
 	uuid[8] = (uuid[8] & 0x3f) | 0x80 // Variant is 10
 	return uuid
 }
+
+func bytesToSliceUInt16(src []byte) []uint16 {
+	var dest []uint16
+	for i := 0; i < len(src); i += 2 {
+		dest = append(dest, getUint16(src[i:i+2]))
+	}
+	return dest
+}
+
+func sliceUInt16ToBytes(src []uint16) []byte {
+	buf := make([]byte, 2)
+	result := make([]byte, 0, len(src)*2)
+
+	for _, p := range src {
+		writeUint16(buf, p)
+		result = append(result, buf...)
+	}
+	return result
+}

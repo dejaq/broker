@@ -13,8 +13,9 @@ var (
 	ErrNotFound      = errors.New("not found")
 	ErrAlreadyExists = errors.New("already exists")
 
-	topicsMetaKeyByID = []byte("topics:mt:")
-	//topicsPartsKeyByID = []byte("topics:cp:")
+	prefixTopicsMetaKeyByID = []byte("topics:mt:")
+	prefixConsMetaByUUID    = []byte("topics:cm:")
+	topicsPartsKeyByID      = []byte("topics:cp:")
 )
 
 /* LocalStorageMetadata handles all the cluster metadata that is stored on this node.
@@ -34,7 +35,9 @@ When calling *LocalStorage the struct prefix has to be used. In badgerDB the ful
 a:topics:cm:<topicUUID>:<consumerID> because this struct receives a prefix of "a:"
 */
 type LocalStorageMetadata struct {
-	db     *badger.DB
+	db *badger.DB
+	// prefix is used for any data handled by this struct
+	// acts like a namespace for metadata in badger
 	prefix []byte
 	logger logrus.FieldLogger
 	parent *LocalStorage
@@ -54,7 +57,7 @@ func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) 
 		TopicUUID:       newUUID(),
 		PartitionsCount: partitionsCount,
 	}
-	key := concatSlices(topicsMetaKeyByID, []byte(topicID))
+	key := concatSlices(prefixTopicsMetaKeyByID, []byte(topicID))
 	body, err := json.Marshal(mt)
 	if err != nil {
 		return TopicMetadata{}, err
@@ -69,7 +72,7 @@ func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) 
 // TopicMetadata returns the topic info, an error or ErrNotFound
 func (t *LocalStorageMetadata) TopicMetadata(topicID string) (TopicMetadata, error) {
 	//todo avoid memory allocs use unsafe for topicID
-	prefix := concatSlices(t.prefix, topicsMetaKeyByID, []byte(topicID))
+	prefix := concatSlices(t.prefix, prefixTopicsMetaKeyByID, []byte(topicID))
 	topicsAsKV, err := t.parent.ReadPaginate(prefix, 1, 0)
 	if err != nil {
 		return TopicMetadata{}, err
@@ -123,7 +126,7 @@ func (t *LocalStorageMetadata) UpsertConsumersMetadata(cons []ConsumerMetadata) 
 		if !IsConsumerIDValid(cons[i].ConsumerID) {
 			return ErrConsumerInvalid
 		}
-		kvs[i], err = cons[i].asKV()
+		kvs[i], err = consMetaToKVPair(cons[i])
 		if err != nil {
 			return fmt.Errorf("failed transforming to KV: %w", err)
 		}
@@ -137,16 +140,14 @@ func (t *LocalStorageMetadata) UpsertConsumersMetadata(cons []ConsumerMetadata) 
 func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 	kvs := make([][]byte, 0, len(cons)*2)
 
-	//remove: topics:cp<topicUUID>:<consumerID> => metadata like lastseen
 	for i := range cons {
-		kv, err := cons[i].asKV()
-		if err != nil {
-			return fmt.Errorf("failed transforming to KV: %w", err)
-		}
-		kvs = append(kvs, kv.Key)
+		partsPrefixTopic := []byte(cons[i].TopicUUID + ":" + cons[i].ConsumerID)
 
-		//TODO remove also its assigned
+		//remove: topics:mt<topicUUID>:<consumerID> => metadata like lastseen
+		kvs = append(kvs, concatSlices(t.prefix, prefixTopicsMetaKeyByID, partsPrefixTopic))
+
 		//remove: topics:cp:<topicUUID>:<consumerID> => the assigned partitions
+		kvs = append(kvs, concatSlices(t.prefix, topicsPartsKeyByID, partsPrefixTopic))
 	}
 
 	return t.parent.DeleteBatch(t.prefix, kvs)
@@ -178,4 +179,60 @@ func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string) ([]ConsumerMe
 	}
 
 	return result, nil
+}
+
+// ConsumerPartitions fetch all the consumers for this topic.
+// It may return consumers with no partitions assigned.
+// Consumers may have Metadata but still missing from this response.
+// To get all the consumers use ConsumersMetadata
+func (t *LocalStorageMetadata) ConsumerPartitions(topicUUID string) ([]ConsumerPartitions, error) {
+	topicPrefix := []byte(topicUUID + ":")
+	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, topicsPartsKeyByID, topicPrefix), MaxConsumersPerTopic, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ConsumerPartitions, len(kvs))
+	for i := range kvs {
+		result[i] = ConsumerPartitions{
+			//the prefix is removed by the parent
+			ConsumerID: string(kvs[i].Key),
+		}
+		//each partition has 2bytes
+		src := kvs[i].Val
+		dest := bytesToSliceUInt16(src)
+
+		result[i].Partitions = dest
+	}
+	return result, nil
+}
+
+// UpsertConsumerPartitions replaces assigned partitions to specific consumers
+// To remove a consumer completely use RemoveConsumers
+func (t *LocalStorageMetadata) UpsertConsumerPartitions(topicUUID string, cps []ConsumerPartitions) error {
+	topicPrefix := []byte(topicUUID + ":")
+
+	kvs := make([]KVPair, len(cps))
+	for i := range cps {
+		kvs[i] = KVPair{
+			Key: []byte(cps[i].ConsumerID),
+			Val: sliceUInt16ToBytes(cps[i].Partitions),
+		}
+	}
+
+	return t.parent.WriteBatch(concatSlices(t.prefix, topicsPartsKeyByID, topicPrefix), kvs)
+}
+
+// asKV is an internal helper to convert into a stored KV with prefix
+func consMetaToKVPair(cm ConsumerMetadata) (KVPair, error) {
+	body, err := json.Marshal(cm)
+	if err != nil {
+		return KVPair{}, err
+	}
+	keyStr := fmt.Sprintf("%s:%s", cm.TopicUUID, cm.ConsumerID)
+	return KVPair{
+		//todo avoid memory allocs by using unsafe cast
+		Key: concatSlices(prefixConsMetaByUUID, []byte(keyStr)),
+		Val: body,
+	}, nil
 }

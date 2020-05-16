@@ -171,6 +171,121 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 	}
 }
 
+func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
+	topics := []string{"topic1", "lastone"}
+
+	cp1 := ConsumerPartitions{
+		ConsumerID: "cons1",
+		Partitions: []uint16{42, 1, 99},
+	}
+	cp2 := ConsumerPartitions{
+		ConsumerID: "cons2",
+		Partitions: []uint16{},
+	}
+	cp3 := ConsumerPartitions{
+		ConsumerID: "cons3",
+		Partitions: []uint16{22, 0},
+	}
+	cons := []ConsumerPartitions{cp2, cp3, cp1}
+
+	for _, topic := range topics {
+		err := suite.metadata.UpsertConsumerPartitions(topic, cons)
+		suite.Require().NoError(err)
+	}
+
+	for _, topic := range topics {
+		got, err := suite.metadata.ConsumerPartitions(topic)
+		suite.Require().NoError(err)
+		suite.Require().Len(got, len(cons), "more or less consumers returned")
+
+		for _, c := range cons {
+			//we need to search for it
+			var found bool
+			for _, cg := range got {
+				if cg.ConsumerID == c.ConsumerID {
+					suite.Assert().ElementsMatch(cg.Partitions, c.Partitions, "partitions for cons %s in topic %s were lost", cg.ConsumerID, topic)
+					found = true
+					break
+				}
+			}
+			suite.Require().True(found, "consumer lost %s in topic %s", c.ConsumerID, topic)
+		}
+	}
+}
+
+func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
+	topics := []string{"topic1", "topic2"}
+
+	cp1 := ConsumerPartitions{
+		ConsumerID: "cons1",
+		Partitions: []uint16{42, 1, 99},
+	}
+	cp2 := ConsumerPartitions{
+		ConsumerID: "cons2",
+		Partitions: []uint16{},
+	}
+	c1 := ConsumerMetadata{
+		ConsumerID: "cons1",
+		LastSeen:   time.Now().UTC().Round(time.Second),
+	}
+	c2 := ConsumerMetadata{
+		ConsumerID: "cons2",
+		LastSeen:   time.Now().UTC().Round(time.Second).Add(time.Hour),
+	}
+
+	consExistsIn := func(shouldExists bool, topic string, consumerID string) {
+		consMeta, err := suite.metadata.ConsumersMetadata(topic)
+		suite.Require().NoError(err)
+
+		var found bool
+		for _, cn := range consMeta {
+			if cn.ConsumerID == consumerID {
+				found = true
+				break
+			}
+		}
+		suite.Require().Equal(shouldExists, found, "state of consumer in consumer metadata is wrong exp %v got %v for  %s topic %s", shouldExists, found, consumerID, topic)
+
+		consParts, err := suite.metadata.ConsumerPartitions(topic)
+		suite.Require().NoError(err)
+
+		for _, cn := range consParts {
+			if cn.ConsumerID == consumerID {
+				found = true
+				break
+			}
+		}
+		suite.Require().Equal(shouldExists, found, "state of consumer in consumer partitions is wrong exp %v got %v for  %s topic %s", shouldExists, found, consumerID, topic)
+	}
+
+	//add all of them
+	for _, topic := range topics {
+		c1.TopicUUID = topic
+		c2.TopicUUID = topic
+		err := suite.metadata.UpsertConsumersMetadata([]ConsumerMetadata{c1, c2})
+		suite.Require().NoError(err)
+
+		err = suite.metadata.UpsertConsumerPartitions(topic, []ConsumerPartitions{cp1, cp2})
+		suite.Require().NoError(err)
+	}
+
+	//check if exists, delete and then check again
+	//this way we also verify that the removing the consumer from one topic
+	//does not affect its state on other topics he is subscribed too
+	consExistsIn(true, topics[0], c1.ConsumerID)
+	consExistsIn(true, topics[0], c2.ConsumerID)
+	consExistsIn(true, topics[1], c1.ConsumerID)
+	consExistsIn(true, topics[1], c2.ConsumerID)
+
+	c2.TopicUUID = topics[1]
+	err := suite.metadata.RemoveConsumers([]ConsumerMetadata{c2})
+	suite.Require().NoError(err)
+	consExistsIn(true, topics[0], c1.ConsumerID)
+	consExistsIn(true, topics[0], c2.ConsumerID)
+	consExistsIn(true, topics[1], c1.ConsumerID)
+	consExistsIn(false, topics[1], c2.ConsumerID)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestInMemoryMetadataSuite(t *testing.T) {

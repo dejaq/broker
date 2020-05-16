@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -13,20 +11,6 @@ type ConsumerMetadata struct {
 	TopicUUID  string    `json:"-"` //it is in the key
 	ConsumerID string    `json:"-"` //it is in the key
 	LastSeen   time.Time `json:"s"`
-}
-
-// asKV is an internal helper to convert into a stored KV with prefix
-func (cm ConsumerMetadata) asKV() (KVPair, error) {
-	body, err := json.Marshal(cm)
-	if err != nil {
-		return KVPair{}, err
-	}
-	keyStr := fmt.Sprintf("topics:cm:%s:%s", cm.TopicUUID, cm.ConsumerID)
-	return KVPair{
-		//todo avoid memory allocs by using unsafe cast
-		Key: []byte(keyStr),
-		Val: body,
-	}, nil
 }
 
 // ConsumerPartitions is a container for all Partitions owned by a ConsumerID
