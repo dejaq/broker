@@ -9,6 +9,7 @@ import (
 const (
 	// MaxConsumersPerTopic is a hard limit on active consumers
 	MaxConsumersPerTopic int = 1000000
+	MaxNumberOfTopics    int = 1000000
 )
 
 var (

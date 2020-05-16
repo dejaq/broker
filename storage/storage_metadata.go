@@ -10,9 +10,11 @@ import (
 )
 
 var (
-	ErrNotFound       = errors.New("not found")
-	ErrAlreadyExists  = errors.New("already exists")
+	ErrNotFound      = errors.New("not found")
+	ErrAlreadyExists = errors.New("already exists")
+
 	topicsMetaKeyByID = []byte("topics:mt:")
+	//topicsPartsKeyByID = []byte("topics:cp:")
 )
 
 /* LocalStorageMetadata handles all the cluster metadata that is stored on this node.
@@ -86,9 +88,27 @@ func (t *LocalStorageMetadata) TopicMetadata(topicID string) (TopicMetadata, err
 	return result, nil
 }
 
-// Topics returns all the topics
+// Topics returns all the topics. Error can signal that the request failed or that
+// at least one topic is malformed
 func (t *LocalStorageMetadata) Topics() ([]TopicMetadata, error) {
-	return nil, errors.New("not implemented")
+	kvs, err := t.parent.ReadPaginate(t.prefix, MaxNumberOfTopics, 0)
+	var rerr error
+	result := make([]TopicMetadata, len(kvs))
+	for i := range kvs {
+		id := string(kvs[i].Key)
+		mt := TopicMetadata{
+			TopicID: id,
+		}
+		err = json.Unmarshal(kvs[i].Val, &mt)
+		if err != nil {
+			t.logger.WithError(err).Errorf("topic %s has malformed data", id)
+			rerr = errors.New("at least one topic has malformed data")
+			continue
+		}
+		result[i] = mt
+	}
+
+	return result, rerr
 }
 
 // UpsertConsumersMetadata can be used to update a consumer's presence.
