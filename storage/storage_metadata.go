@@ -8,7 +8,6 @@ import (
 
 	"github.com/twmb/murmur3"
 
-	"github.com/dgraph-io/badger/v2"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,7 +42,6 @@ When calling *LocalStorage the struct prefix has to be used. In badgerDB the ful
 a:topics:cm:<topicHash>:<consumerID> because this struct receives a prefix of "a:"
 */
 type LocalStorageMetadata struct {
-	db *badger.DB
 	// prefix is used for any data handled by this struct
 	// acts like a namespace for metadata in badger
 	prefix []byte

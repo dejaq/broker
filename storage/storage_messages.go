@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/dgraph-io/badger/v2"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,7 +29,6 @@ When calling *LocalStorage the struct prefix has to be used. In badgerDB the ful
 t:<topicHash><partition><priority><msgID> because this struct receives a prefix of "t:"
 */
 type LocalStorageMessages struct {
-	db     *badger.DB
 	prefix []byte
 	logger logrus.FieldLogger
 	parent *LocalStorage
@@ -79,6 +79,67 @@ func (m *LocalStorageMessages) GetLowestPriority(topicHash uint32, partition uin
 		}
 	}
 	return result, err
+}
+
+// GetLowestPriorities checks which partition has the
+// message with the lowest priority.
+// It avoids accessing the Disk by leveraging the Key Only Badger iteration
+func (m *LocalStorageMessages) GetPartitionWithLowestPriority(topicHash uint32, partitions []uint16) (uint16, error) {
+	var lowestPartition uint16
+	var lowestPriority uint16
+	var previousPartition uint16
+	var atLeastOne bool
+
+	//for fast query of the partitions list
+	dict := make(map[uint16]struct{}, len(partitions))
+	for i := range partitions {
+		dict[partitions[i]] = struct{}{}
+	}
+
+	//this can also be achieved using Seek()s
+
+	err := m.parent.db.View(func(txn *badger.Txn) error {
+		prefix := m.prefixForTopicAndPart(topicHash, 0)
+		prefix = prefix[:len(prefix)-partitionSize]
+
+		it := txn.NewIterator(badger.IteratorOptions{
+			//very important to do a KEY ONLY iteration
+			//this way we only traverse the inmemory LSM tree
+			// all the info we need can be found in the KEYs
+			PrefetchValues: false,
+			Reverse:        false,
+			AllVersions:    false,
+			Prefix:         prefix,
+			InternalAccess: false,
+		})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			//we only care for the first message of each partition
+			//but for only a subset of partitions
+			//first 2 bytes of the key is the partition
+			partition := binary.BigEndian.Uint16(it.Item().Key())
+			if atLeastOne && partition == previousPartition {
+				//we rely on the fact that partitions are sorted
+				// and we traverse ASC
+				//so we only need th first message from each partition
+				continue
+			}
+			if _, weAreInterested := dict[partition]; !weAreInterested {
+				continue
+			}
+			previousPartition = partition
+			atLeastOne = true
+
+			priority := binary.BigEndian.Uint16(it.Item().Key()[partitionSize:])
+			if priority >= lowestPriority {
+				continue
+			}
+			lowestPriority = priority
+			lowestPartition = partition
+		}
+		return nil
+	})
+	return lowestPartition, err
 }
 
 func (m *LocalStorageMessages) prefixForTopicAndPart(topicHash uint32, partition uint16) []byte {

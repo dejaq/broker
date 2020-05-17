@@ -26,7 +26,6 @@ type LocalStorage struct {
 func (s *LocalStorage) LocalMetadata() *LocalStorageMetadata {
 	if s.metadataSingleton == nil {
 		s.metadataSingleton = &LocalStorageMetadata{
-			db:     s.db,
 			prefix: []byte("a:"),
 			logger: s.logger.WithField("component", "LocalStorageMetadata"),
 			parent: s,
@@ -39,7 +38,6 @@ func (s *LocalStorage) LocalMetadata() *LocalStorageMetadata {
 func (s *LocalStorage) LocalMessages() *LocalStorageMessages {
 	if s.messagesSingleton == nil {
 		s.messagesSingleton = &LocalStorageMessages{
-			db:     s.db,
 			prefix: []byte("t:"),
 			logger: s.logger.WithField("component", "LocalStorageMessages"),
 			parent: s,
@@ -50,6 +48,7 @@ func (s *LocalStorage) LocalMessages() *LocalStorageMessages {
 }
 
 // NewLocalStorageInMemory is used when persistence/durability is not required, good for integration tests
+// Call the Close() method to gracefully shutdown the Storage.
 func NewLocalStorageInMemory(logger logrus.FieldLogger) (*LocalStorage, error) {
 	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true))
 	if err != nil {
@@ -207,5 +206,8 @@ func (s *LocalStorage) Insert(prefix []byte, kv KVPair) error {
 
 // Close will shutdown and release the lock on all local metadata instances derived from it.
 func (s *LocalStorage) Close() error {
+	// It is not our responsibility to close the Badger instance
+	// since we received it at construct but
+	// nothing brakes if we try to close it multiple times.
 	return s.db.Close()
 }

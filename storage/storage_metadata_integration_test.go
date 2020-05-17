@@ -164,6 +164,10 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 					for _, gotCM := range got {
 						if gotCM.ConsumerID == wantedCM.ConsumerID {
 							found = true
+
+							suite.Require().Equal(wantedCM.LastSeen, gotCM.LastSeen,
+								"lastSeen was lost for consumer %s on topic %d",
+								gotCM.ConsumerID, topic)
 							break
 						}
 					}
