@@ -80,13 +80,13 @@ func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 			}
 			suite.Require().Equal(test.inputID, mtInsert.TopicID)
 			suite.Require().Equal(test.inputParts, mtInsert.PartitionsCount)
-			suite.Require().NotEmpty(mtInsert.TopicUUID)
+			suite.Require().NotEmpty(mtInsert.TopicHash)
 
 			mt, err := suite.metadata.TopicMetadata(test.inputID)
 			suite.Require().NoError(err)
 			suite.Require().Equal(test.inputID, mt.TopicID)
 			suite.Require().Equal(test.inputParts, mt.PartitionsCount)
-			suite.Require().Equal(mtInsert.TopicUUID, mt.TopicUUID)
+			suite.Require().Equal(mtInsert.TopicHash, mt.TopicHash)
 		})
 	}
 
@@ -109,20 +109,20 @@ func (suite *InMemoryMetadataSuite) TestCreateTopicsMetadata() {
 }
 
 func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
-	topics := []string{"topic1", "lastone"}
+	topics := []uint32{0, 87}
 
 	c1 := ConsumerMetadata{
-		TopicUUID:  topics[0],
+		TopicHash:  topics[0],
 		ConsumerID: "cons1",
 		LastSeen:   time.Now().UTC().Round(time.Second),
 	}
 	c2 := ConsumerMetadata{
-		TopicUUID:  topics[0],
+		TopicHash:  topics[0],
 		ConsumerID: "cons2",
 		LastSeen:   time.Now().UTC().Round(time.Second).Add(time.Hour),
 	}
 	c3 := ConsumerMetadata{
-		TopicUUID:  topics[1],
+		TopicHash:  topics[1],
 		ConsumerID: "cons1TTopic2",
 		LastSeen:   time.Now().UTC().Round(time.Second).Add(3 * time.Hour),
 	}
@@ -131,10 +131,12 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 		name  string
 		input []ConsumerMetadata
 	}{
-		{name: "fewConsumers",
+		{
+			name:  "fewConsumers",
 			input: []ConsumerMetadata{c3, c1, c2},
 		},
-		{name: "onlyOneTopic",
+		{
+			name:  "onlyOneTopic",
 			input: []ConsumerMetadata{c3},
 		},
 	}
@@ -148,13 +150,27 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 			suite.Require().NoError(err)
 
 			//test GET for each topic
-			var gotCons []ConsumerMetadata
 			for _, topic := range topics {
 				got, errGet := suite.metadata.ConsumersMetadata(topic)
 				suite.Require().NoError(errGet)
-				gotCons = append(gotCons, got...)
+
+				shouldHaveLen := 0
+				for _, wantedCM := range test.input {
+					if wantedCM.TopicHash != topic {
+						continue
+					}
+					shouldHaveLen++
+					var found bool
+					for _, gotCM := range got {
+						if gotCM.ConsumerID == wantedCM.ConsumerID {
+							found = true
+							break
+						}
+					}
+					suite.Require().True(found, "missing consumerID %s in topic %d", wantedCM.ConsumerID, topic)
+				}
+				suite.Require().Len(got, shouldHaveLen, "we received more consumers than supposed to")
 			}
-			suite.Require().ElementsMatch(test.input, gotCons)
 
 			//remove all of them
 			err = suite.metadata.RemoveConsumers(test.input)
@@ -172,11 +188,11 @@ func (suite *InMemoryMetadataSuite) TestConsumersMetadata() {
 }
 
 func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
-	topics := []string{"topic1", "lastone"}
+	topics := []uint32{2, 87}
 
 	cp1 := ConsumerPartitions{
 		ConsumerID: "cons1",
-		Partitions: []uint16{42, 1, 99},
+		Partitions: []uint16{42, 1, 99, 1024, 65500},
 	}
 	cp2 := ConsumerPartitions{
 		ConsumerID: "cons2",
@@ -189,35 +205,44 @@ func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
 	cons := []ConsumerPartitions{cp2, cp3, cp1}
 
 	for _, topic := range topics {
-		err := suite.metadata.UpsertConsumerPartitions(topic, cons)
+		for i := range cons {
+			cons[i].TopicHash = topic
+		}
+		err := suite.metadata.UpsertConsumerPartitions(cons)
 		suite.Require().NoError(err)
 	}
 
 	for _, topic := range topics {
 		got, err := suite.metadata.ConsumerPartitions(topic)
 		suite.Require().NoError(err)
-		suite.Require().Len(got, len(cons), "more or less consumers returned")
+		suite.Require().Len(got, len(cons),
+			"more or less consumers returned for topic %d", topic)
 
-		for _, c := range cons {
+		for _, consGot := range got {
+			suite.Require().Equal(topic, consGot.TopicHash,
+				"exp consumer for topic %d but got for %d ", topic, consGot.TopicHash)
+		}
+
+		for _, consWanted := range cons {
 			//we need to search for it
 			var found bool
-			for _, cg := range got {
-				if cg.ConsumerID == c.ConsumerID {
+			for _, consGot := range got {
+				if consGot.ConsumerID == consWanted.ConsumerID {
 					suite.Assert().
-						ElementsMatch(cg.Partitions, c.Partitions,
+						ElementsMatch(consGot.Partitions, consWanted.Partitions,
 							"partitions for cons %s in topic %s were lost",
-							cg.ConsumerID, topic)
+							consGot.ConsumerID, topic)
 					found = true
 					break
 				}
 			}
-			suite.Require().True(found, "consumer lost %s in topic %s", c.ConsumerID, topic)
+			suite.Require().True(found, "consumer lost %s in topic %s", consWanted.ConsumerID, topic)
 		}
 	}
 }
 
 func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
-	topics := []string{"topic1", "topic2"}
+	topics := []uint32{2, 87}
 
 	cp1 := ConsumerPartitions{
 		ConsumerID: "cons1",
@@ -236,8 +261,8 @@ func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
 		LastSeen:   time.Now().UTC().Round(time.Second).Add(time.Hour),
 	}
 
-	consExistsIn := func(shouldExists bool, topic string, consumerID string) {
-		consMeta, err := suite.metadata.ConsumersMetadata(topic)
+	consExistsIn := func(shouldExists bool, topicHash uint32, consumerID string) {
+		consMeta, err := suite.metadata.ConsumersMetadata(topicHash)
 		suite.Require().NoError(err)
 
 		var found bool
@@ -248,10 +273,10 @@ func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
 			}
 		}
 		suite.Require().Equal(shouldExists, found,
-			"state of consumer in consumer metadata is wrong exp %v got %v for  %s topic %s",
-			shouldExists, found, consumerID, topic)
+			"state of consumer in consumer metadata is wrong exp %v got %v for  %s topicHash %d",
+			shouldExists, found, consumerID, topicHash)
 
-		consParts, err := suite.metadata.ConsumerPartitions(topic)
+		consParts, err := suite.metadata.ConsumerPartitions(topicHash)
 		suite.Require().NoError(err)
 
 		for _, cn := range consParts {
@@ -262,18 +287,20 @@ func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
 		}
 		suite.Require().Equal(
 			shouldExists, found,
-			"state of consumer in consumer partitions is wrong exp %v got %v for  %s topic %s",
-			shouldExists, found, consumerID, topic)
+			"state of consumer in consumer partitions is wrong exp %v got %v for  %s topicHash %d",
+			shouldExists, found, consumerID, topicHash)
 	}
 
 	//add all of them
 	for _, topic := range topics {
-		c1.TopicUUID = topic
-		c2.TopicUUID = topic
+		c1.TopicHash = topic
+		c2.TopicHash = topic
 		err := suite.metadata.UpsertConsumersMetadata([]ConsumerMetadata{c1, c2})
 		suite.Require().NoError(err)
 
-		err = suite.metadata.UpsertConsumerPartitions(topic, []ConsumerPartitions{cp1, cp2})
+		cp1.TopicHash = topic
+		cp2.TopicHash = topic
+		err = suite.metadata.UpsertConsumerPartitions([]ConsumerPartitions{cp1, cp2})
 		suite.Require().NoError(err)
 	}
 
@@ -285,7 +312,7 @@ func (suite *InMemoryMetadataSuite) TestDeleteConsumer() {
 	consExistsIn(true, topics[1], c1.ConsumerID)
 	consExistsIn(true, topics[1], c2.ConsumerID)
 
-	c2.TopicUUID = topics[1]
+	c2.TopicHash = topics[1]
 	err := suite.metadata.RemoveConsumers([]ConsumerMetadata{c2})
 	suite.Require().NoError(err)
 	consExistsIn(true, topics[0], c1.ConsumerID)

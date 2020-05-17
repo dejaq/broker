@@ -15,85 +15,88 @@ type InMemoryMessagesSuite struct {
 
 func (suite *InMemoryMessagesSuite) SetupTest() {
 	storage, err := NewLocalStorageInMemory(logrus.StandardLogger())
-	suite.Assert().NoError(err)
+	suite.Require().NoError(err)
 
 	suite.messages = storage.LocalMessages()
 }
 
 // Test that removing a msg does not affect other partition or priority
 func (suite *InMemoryMessagesSuite) TestDelete() {
-	key := []byte("key3")
-	topic := []byte("singleton")
+	topicHash := uint32(42)
 
-	p1 := keysToMsgs([][]byte{key}, 87)
-	err := suite.messages.Upsert(topic, 42, p1)
-	suite.Assert().NoError(err)
+	p1 := NewMessageWithRandomID(87, []byte("body_p1"))
+	err := suite.messages.Upsert(topicHash, 42, []Message{p1})
+	suite.Require().NoError(err)
 
 	//different priority
-	p2 := keysToMsgs([][]byte{key}, 0)
-	err = suite.messages.Upsert(topic, 42, p2)
-	suite.Assert().NoError(err)
+	p2 := NewMessageWithRandomID(0, []byte("body_p2"))
+	err = suite.messages.Upsert(topicHash, 42, []Message{p2})
+	suite.Require().NoError(err)
 
 	//different partition
-	p3 := keysToMsgs([][]byte{key}, 87)
-	err = suite.messages.Upsert(topic, 87, p3)
-	suite.Assert().NoError(err)
+	p3 := NewMessageWithRandomID(87, []byte("body_p3"))
+	err = suite.messages.Upsert(topicHash, 87, []Message{p3})
+	suite.Require().NoError(err)
 
-	err = suite.messages.Ack(topic, 42, p1)
-	suite.Assert().NoError(err)
+	err = suite.messages.Ack(topicHash, 42, []Message{p1})
+	suite.Require().NoError(err)
 
 	//this should have the priority 0 left in it
-	result, err := suite.messages.GetLowestPriority(topic, 42, 100)
-	suite.Assert().NoError(err)
-	suite.Assert().Len(result, 1)
-	suite.Assert().Equal(key, result[0].ID)
-	suite.Assert().Equal(uint16(0), result[0].Priority)
+	result, err := suite.messages.GetLowestPriority(topicHash, 42, 100)
+	suite.Require().NoError(err)
+	suite.Require().Len(result, 1)
+	suite.Require().Equal(p2.ID, result[0].ID)
+	suite.Require().Equal(uint16(0), result[0].Priority)
+	suite.Require().Equal(p2.Body, result[0].Body)
 
 	//the other should still exists on different partition
-	result, err = suite.messages.GetLowestPriority(topic, 87, 100)
-	suite.Assert().NoError(err)
-	suite.Assert().Len(result, 1)
-	suite.Assert().Equal(key, result[0].ID)
-	suite.Assert().Equal(uint16(87), result[0].Priority)
+	result, err = suite.messages.GetLowestPriority(topicHash, 87, 100)
+	suite.Require().NoError(err)
+	suite.Require().Len(result, 1)
+	suite.Require().Equal(p3.ID, result[0].ID)
+	suite.Require().Equal(p3.Body, result[0].Body)
+	suite.Require().Equal(uint16(87), result[0].Priority)
 }
 
 func (suite *InMemoryMessagesSuite) TestSeparationOfTopics() {
-	key := []byte("key3")
-	topic1 := []byte("topic1")
-	topic2 := []byte("topic2")
+	topic1 := uint32(42)
+	topic2 := uint32(87)
+	topics := []uint32{topic1, topic2}
 
-	for _, t := range [][]byte{topic1, topic2} {
-		p1 := keysToMsgs([][]byte{key}, 42)
-		err := suite.messages.Upsert(t, 42, p1)
-		suite.Assert().NoError(err)
+	p1 := NewMessageWithRandomID(42, []byte("p1body_for_topicTODO"))
+
+	for _, t := range topics {
+		err := suite.messages.Upsert(t, 42, []Message{p1})
+		suite.Require().NoError(err)
 
 		result, err := suite.messages.GetLowestPriority(t, 42, 100)
-		suite.Assert().NoError(err)
-		suite.Assert().Len(result, 1, "msg from another topic was read")
+		suite.Require().NoError(err)
+		suite.Require().Len(result, 1, "msg from another topic was read")
 	}
 
-	err := suite.messages.Ack(topic2, 42, keysToMsgs([][]byte{key}, 42))
-	suite.Assert().NoError(err)
+	err := suite.messages.Ack(topic2, 42, []Message{p1})
+	suite.Require().NoError(err)
 
 	result, err := suite.messages.GetLowestPriority(topic2, 42, 100)
-	suite.Assert().NoError(err)
-	suite.Assert().Len(result, 0)
+	suite.Require().NoError(err)
+	suite.Require().Len(result, 0)
 
 	result, err = suite.messages.GetLowestPriority(topic1, 42, 100)
-	suite.Assert().NoError(err)
-	suite.Assert().Len(result, 1)
-	suite.Assert().Equal(result[0].ID, key)
-	suite.Assert().Equal(result[0].Priority, uint16(42))
+	suite.Require().NoError(err)
+	suite.Require().Len(result, 1)
+	suite.Require().Equal(result[0].ID, p1.ID)
+	suite.Require().Equal(result[0].Priority, uint16(42))
 }
 
 func (suite *InMemoryMessagesSuite) TestOrderedKeysInAPriority() {
-	k1 := []byte("key1")
+	//all keys must have 6 bytes
+	k1 := []byte("key1__")
 	k1a := []byte("key1_a")
 	k1b := []byte("key1_b")
 	k1c := []byte("key1_c")
-	k2 := []byte("key2")
-	k3 := []byte("key3")
-	k4 := []byte("key4")
+	k2 := []byte("key2__")
+	k3 := []byte("key3__")
+	k4 := []byte("key4__")
 
 	tests := []struct {
 		name          string
@@ -128,30 +131,32 @@ func (suite *InMemoryMessagesSuite) TestOrderedKeysInAPriority() {
 	}
 
 	//this also tests Message constructors
+	topic := uint32(7)
 	for _, t := range tests {
 		test := t
 		suite.Run(test.name, func() {
-			err := suite.messages.Upsert([]byte(test.name), 42, keysToMsgs(test.input, 1))
-			suite.Assert().NoError(err)
+			topic++
+			err := suite.messages.Upsert(topic, 42, keysToMsgs(test.input, 1))
+			suite.Require().NoError(err)
 
-			got, err := suite.messages.GetLowestPriority([]byte(test.name), 42, test.limit)
-			suite.Assert().NoError(err)
-			if suite.Assert().Equal(len(test.orderedOutput), len(got)) {
-				for i := range got {
-					suite.Assert().Equal(test.orderedOutput[i], got[i].ID)
-				}
+			got, err := suite.messages.GetLowestPriority(topic, 42, test.limit)
+			suite.Require().NoError(err)
+			suite.Require().Len(got, len(test.orderedOutput))
+			for i := range got {
+				suite.Require().Equal(test.orderedOutput[i], got[i].ID)
 			}
 		})
 	}
 }
 
 func (suite *InMemoryMessagesSuite) TestOrderedKeysInMultiplePrioritiesAndPartitions() {
-	k1 := []byte("key1")
-	k2 := []byte("key2")
-	k3 := []byte("key3")
+	//keys must have 6 bytes
+	k1 := []byte("key1__")
+	k2 := []byte("key2__")
+	k3 := []byte("key3__")
 
 	//each test will be run for each partition / topic
-	topics := [][]byte{[]byte("topic1")} //, "megatopic"}
+	topics := []uint32{0, 87}
 	partitions := []uint16{0, 87, 42}
 
 	tests := []struct {
@@ -195,7 +200,7 @@ func (suite *InMemoryMessagesSuite) TestOrderedKeysInMultiplePrioritiesAndPartit
 			//we put ALL the data in and then check if it comes out right
 			for _, partition := range partitions {
 				err := suite.messages.Upsert(topic, partition, test.input)
-				suite.Assert().NoError(err)
+				suite.Require().NoError(err)
 			}
 		}
 
@@ -204,20 +209,27 @@ func (suite *InMemoryMessagesSuite) TestOrderedKeysInMultiplePrioritiesAndPartit
 			topic := topic
 			for _, partition := range partitions {
 				partition := partition
-				suite.Run(fmt.Sprintf("%s-%d-%s", topic, partition, test.name), func() {
+				suite.Run(fmt.Sprintf("%d-%d-%s", topic, partition, test.name), func() {
 					got, err := suite.messages.GetLowestPriority(topic, partition, 100)
-					suite.Assert().NoError(err)
-					if suite.Assert().Equal(len(test.orderedOutput), len(got)) {
-						for i := range got {
-							suite.Assert().Equal(test.orderedOutput[i].ID, got[i].ID)
-							suite.Assert().Equal(test.orderedOutput[i].Priority, got[i].Priority)
-							suite.Assert().Equal(test.orderedOutput[i].Body, got[i].Body)
-						}
+					suite.Require().NoError(err)
+					suite.Require().Len(got, len(test.orderedOutput))
+					for i := range got {
+						suite.Require().Equal(test.orderedOutput[i].ID, got[i].ID)
+						suite.Require().Equal(test.orderedOutput[i].Priority, got[i].Priority)
+						suite.Require().Equal(test.orderedOutput[i].Body, got[i].Body)
 					}
 				})
 			}
 		}
 	}
+}
+
+func flattenSlices(list ...[]Message) []Message {
+	var result []Message
+	for _, cont := range list {
+		result = append(result, cont...)
+	}
+	return result
 }
 
 func keysToMsgs(in [][]byte, priority uint16) []Message {
@@ -228,14 +240,6 @@ func keysToMsgs(in [][]byte, priority uint16) []Message {
 			Priority: priority,
 			Body:     append([]byte("body_"), in[i]...),
 		}
-	}
-	return result
-}
-
-func flattenSlices(list ...[]Message) []Message {
-	var result []Message
-	for _, cont := range list {
-		result = append(result, cont...)
 	}
 	return result
 }
