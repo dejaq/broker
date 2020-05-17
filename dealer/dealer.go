@@ -78,18 +78,28 @@ func (d *Dealer) tick() map[string][]Allocation {
 	return topicAllocations
 }
 
+// allocate assign partitions to consumers, it use an round robin
+// algorithm to spread partitions to consumers, rules:
+//    one consumer can have none/one/multiple partition(s) assigned
+//    one partitions must have only one consumer assigned
 func allocate(cIds, pIds []string) []Allocation {
 	var allocations []Allocation
-	cn := len(cIds)
+
+	// For create allocations there must exists at least one consumer and one partition
+	if len(cIds) < 1 || len(pIds) < 1 {
+		return allocations
+	}
+
 	var i int
 	for _, pId := range pIds {
-		if i > cn-1 {
+		if i > len(cIds)-1 {
 			i = 0
 		}
 		allocations = append(allocations, Allocation{
 			ConsumerID:  cIds[i],
 			PartitionID: pId,
 		})
+		i++
 	}
 	return allocations
 }
