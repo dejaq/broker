@@ -60,14 +60,13 @@ func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) 
 		TopicUUID:       newUUID(),
 		PartitionsCount: partitionsCount,
 	}
-	key := concatSlices(prefixTopicsMetaKeyByID, []byte(topicID))
 	body, err := json.Marshal(mt)
 	if err != nil {
 		return TopicMetadata{}, err
 	}
-
-	return mt, t.parent.Insert(t.prefix, KVPair{
-		Key: key,
+	prefix := concatSlices(t.prefix, prefixTopicsMetaKeyByID)
+	return mt, t.parent.Insert(prefix, KVPair{
+		Key: []byte(topicID),
 		Val: body,
 	})
 }
@@ -97,20 +96,21 @@ func (t *LocalStorageMetadata) TopicMetadata(topicID string) (TopicMetadata, err
 // Topics returns all the topics. Error can signal that the request failed or that
 // at least one topic is malformed
 func (t *LocalStorageMetadata) Topics() ([]TopicMetadata, error) {
-	kvs, err := t.parent.ReadPaginate(t.prefix, MaxNumberOfTopics, 0)
+	prefix := concatSlices(t.prefix, prefixTopicsMetaKeyByID)
+	kvs, err := t.parent.ReadPaginate(prefix, MaxNumberOfTopics, 0)
 	if err != nil {
 		return nil, err
 	}
+
 	var rerr error
 	result := make([]TopicMetadata, len(kvs))
 	for i := range kvs {
-		id := string(kvs[i].Key)
 		mt := TopicMetadata{
-			TopicID: id,
+			TopicID: string(kvs[i].Key),
 		}
 		err = json.Unmarshal(kvs[i].Val, &mt)
 		if err != nil {
-			t.logger.WithError(err).Errorf("topic %s has malformed data", id)
+			t.logger.WithError(err).Errorf("topic %s has malformed data", mt.TopicID)
 			rerr = errors.New("at least one topic has malformed data")
 			continue
 		}

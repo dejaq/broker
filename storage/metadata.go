@@ -21,7 +21,7 @@ type ConsumerPartitions struct {
 
 // TopicMetadata holds the basic info for a topic
 type TopicMetadata struct {
-	TopicID         string `json:""` //it is already in the Key
+	TopicID         string `json:"-"` //it is already in the Key
 	TopicUUID       []byte `json:"u"`
 	PartitionsCount int    `json:"p"`
 }
