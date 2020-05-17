@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
-
 	"github.com/dgraph-io/badger/v2"
 	"github.com/sirupsen/logrus"
 )
@@ -101,12 +99,12 @@ func (s *LocalStorage) WriteBatch(prefix []byte, batch []KVPair) error {
 
 		err := wb.Set(key, msg.Val)
 		if err != nil {
-			return errors.Wrap(err, "failed to write")
+			return fmt.Errorf("failed to set: %w", err)
 		}
 	}
 	err := wb.Flush()
 	if err != nil {
-		return errors.Wrap(err, "failed to flush")
+		return fmt.Errorf("failed to flush: %w", err)
 	}
 
 	return nil
@@ -178,12 +176,12 @@ func (s *LocalStorage) DeleteBatch(prefix []byte, keys [][]byte) error {
 
 		err := wb.Delete(key)
 		if err != nil {
-			return errors.Wrap(err, "failed to delete")
+			return fmt.Errorf("failed to delete: %w", err)
 		}
 	}
 	err := wb.Flush()
 	if err != nil {
-		return errors.Wrap(err, "failed to flush")
+		return fmt.Errorf("failed to flush: %w", err)
 	}
 	return nil
 }
