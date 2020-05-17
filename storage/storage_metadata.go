@@ -1,24 +1,29 @@
 package storage
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/spaolacci/murmur3"
+
 	"github.com/dgraph-io/badger/v2"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	//length in bytes of topicHash
+	topicHashSize = 4
 )
 
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrAlreadyExists = errors.New("already exists")
 
-	//nolint:gochecknoglobals //reusable prefixes
-	prefixTopicsMetaKeyByID = []byte("topics:mt:")
-	//nolint:gochecknoglobals //reusable prefixes
-	prefixConsMetaByUUID = []byte("topics:cm:")
-	//nolint:gochecknoglobals //reusable prefixes
-	prefixConsPartsByUUID = []byte("topics:cp:")
+	prefixTopicsMetaKeyByID = []byte("topics:mt:") //nolint:gochecknoglobals //reusable prefixes
+	prefixConsMetaByUUID    = []byte("topics:cm:") //nolint:gochecknoglobals //reusable prefixes
+	prefixConsPartsByUUID   = []byte("topics:cp:") //nolint:gochecknoglobals //reusable prefixes
 )
 
 /* LocalStorageMetadata handles all the cluster metadata that is stored on this node.
@@ -26,16 +31,16 @@ var (
 
 The data is kept under these format/prefixes (Key => Value)
 
-topics:cm:<topicUUID>:<consumerID> => metadata like lastseen
-topics:cp:<topicUUID>:<consumerID> => the assigned partitions
-topics:mt:<topicID> => topics metadata like the UUID and no of partitions
+topics:cm:<topicHash>:<consumerID> => metadata like lastseen
+topics:cp:<topicHash>:<consumerID> => the assigned partitions
+topics:mt:<topicID> => topics metadata like the topicHash and no of partitions
 
-TopicUUID is 16bytes
+topicHash is 4bytes (murmur3 32bit of the topicID)
 For limits of consumerID and topicID see limits.go
 
 
 When calling *LocalStorage the struct prefix has to be used. In badgerDB the full key would be
-a:topics:cm:<topicUUID>:<consumerID> because this struct receives a prefix of "a:"
+a:topics:cm:<topicHash>:<consumerID> because this struct receives a prefix of "a:"
 */
 type LocalStorageMetadata struct {
 	db *badger.DB
@@ -58,7 +63,7 @@ func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) 
 
 	mt := TopicMetadata{
 		TopicID:         topicID,
-		TopicUUID:       newUUID(),
+		TopicHash:       murmur3.Sum32([]byte(topicID)),
 		PartitionsCount: partitionsCount,
 	}
 	body, err := json.Marshal(mt)
@@ -127,19 +132,22 @@ func (t *LocalStorageMetadata) Topics() ([]TopicMetadata, error) {
 // It does NOT alter any input property like LastSeen
 func (t *LocalStorageMetadata) UpsertConsumersMetadata(cons []ConsumerMetadata) error {
 	kvs := make([]KVPair, len(cons))
-	var err error
-
 	for i := range cons {
 		if !IsConsumerIDValid(cons[i].ConsumerID) {
 			return ErrConsumerInvalid
 		}
-		kvs[i], err = consMetaToKVPair(cons[i])
+
+		body, err := json.Marshal(cons[i])
 		if err != nil {
-			return fmt.Errorf("failed transforming to KV: %w", err)
+			return err
+		}
+		kvs[i] = KVPair{
+			Key: t.keyForConsumerMetadata(cons[i]),
+			Val: body,
 		}
 	}
 
-	return t.parent.WriteBatch(t.prefix, kvs)
+	return t.parent.WriteBatch(nil, kvs)
 }
 
 // RemoveConsumers deletes all the metadata entries of a consumerID
@@ -148,32 +156,32 @@ func (t *LocalStorageMetadata) RemoveConsumers(cons []ConsumerMetadata) error {
 	kvs := make([][]byte, 0, len(cons)*2)
 
 	for i := range cons {
-		partsPrefixTopic := []byte(cons[i].TopicUUID + ":" + cons[i].ConsumerID)
+		//remove: topics:cm<topicHash>:<consumerID> => metadata like lastseen
+		kvs = append(kvs, t.keyForConsumerMetadata(cons[i]))
 
-		//remove: topics:cm<topicUUID>:<consumerID> => metadata like lastseen
-		kvs = append(kvs, concatSlices(prefixConsMetaByUUID, partsPrefixTopic))
-
-		//remove: topics:cp:<topicUUID>:<consumerID> => the assigned partitions
-		kvs = append(kvs, concatSlices(prefixConsPartsByUUID, partsPrefixTopic))
+		//remove: topics:cp:<topicHash>:<consumerID> => the assigned partitions
+		kvs = append(kvs, t.keyForConsumerPartitions(ConsumerPartitions{
+			TopicHash:  cons[i].TopicHash,
+			ConsumerID: cons[i].ConsumerID,
+		}))
 	}
 
-	return t.parent.DeleteBatch(t.prefix, kvs)
+	return t.parent.DeleteBatch(nil, kvs)
 }
 
 // ConsumersMetadata can retrieve ALL the consumers
-func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string) ([]ConsumerMetadata, error) {
-	//remove: topics:cm:<topicUUID>:<consumerID> => metadata like lastseen
-	keyPrefix := []byte(fmt.Sprintf("topics:cm:%s:", topicUUID))
+func (t *LocalStorageMetadata) ConsumersMetadata(topicHash uint32) ([]ConsumerMetadata, error) {
+	//topics:cm:<topicHash>:<consumerID> => metadata like lastseen
 
 	//since we do not have a pagination system just get them all 1M hard limit for now
-	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, keyPrefix), MaxConsumersPerTopic, 0)
+	kvs, err := t.parent.ReadPaginate(t.prefixConsumerData(prefixConsMetaByUUID, topicHash), MaxConsumersPerTopic, 0)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]ConsumerMetadata, len(kvs))
 	for i := range kvs {
 		cm := ConsumerMetadata{
-			TopicUUID:  topicUUID,
+			TopicHash:  topicHash,
 			ConsumerID: string(kvs[i].Key), //the prefix is already removed by ReadPaginate
 		}
 
@@ -192,9 +200,8 @@ func (t *LocalStorageMetadata) ConsumersMetadata(topicUUID string) ([]ConsumerMe
 // It may return consumers with no partitions assigned.
 // Consumers may have Metadata but still missing from this response.
 // To get all the consumers use ConsumersMetadata
-func (t *LocalStorageMetadata) ConsumerPartitions(topicUUID string) ([]ConsumerPartitions, error) {
-	topicPrefix := []byte(topicUUID + ":")
-	kvs, err := t.parent.ReadPaginate(concatSlices(t.prefix, prefixConsPartsByUUID, topicPrefix), MaxConsumersPerTopic, 0)
+func (t *LocalStorageMetadata) ConsumerPartitions(topicHash uint32) ([]ConsumerPartitions, error) {
+	kvs, err := t.parent.ReadPaginate(t.prefixConsumerData(prefixConsPartsByUUID, topicHash), MaxConsumersPerTopic, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -204,6 +211,7 @@ func (t *LocalStorageMetadata) ConsumerPartitions(topicUUID string) ([]ConsumerP
 		result[i] = ConsumerPartitions{
 			//the prefix is removed by the parent
 			ConsumerID: string(kvs[i].Key),
+			TopicHash:  topicHash,
 		}
 		//each partition has 2bytes
 		src := kvs[i].Val
@@ -216,30 +224,38 @@ func (t *LocalStorageMetadata) ConsumerPartitions(topicUUID string) ([]ConsumerP
 
 // UpsertConsumerPartitions replaces assigned partitions to specific consumers
 // To remove a consumer completely use RemoveConsumers
-func (t *LocalStorageMetadata) UpsertConsumerPartitions(topicUUID string, cps []ConsumerPartitions) error {
-	topicPrefix := []byte(topicUUID + ":")
-
-	kvs := make([]KVPair, len(cps))
-	for i := range cps {
+func (t *LocalStorageMetadata) UpsertConsumerPartitions(cons []ConsumerPartitions) error {
+	kvs := make([]KVPair, len(cons))
+	for i := range cons {
 		kvs[i] = KVPair{
-			Key: []byte(cps[i].ConsumerID),
-			Val: sliceUInt16ToBytes(cps[i].Partitions),
+			Key: t.keyForConsumerPartitions(cons[i]),
+			Val: sliceUInt16ToBytes(cons[i].Partitions),
 		}
 	}
 
-	return t.parent.WriteBatch(concatSlices(t.prefix, prefixConsPartsByUUID, topicPrefix), kvs)
+	return t.parent.WriteBatch(nil, kvs)
 }
 
-// asKV is an internal helper to convert into a stored KV with prefix
-func consMetaToKVPair(cm ConsumerMetadata) (KVPair, error) {
-	body, err := json.Marshal(cm)
-	if err != nil {
-		return KVPair{}, err
-	}
-	keyStr := fmt.Sprintf("%s:%s", cm.TopicUUID, cm.ConsumerID)
-	return KVPair{
-		//todo avoid memory allocs by using unsafe cast
-		Key: concatSlices(prefixConsMetaByUUID, []byte(keyStr)),
-		Val: body,
-	}, nil
+func (t *LocalStorageMetadata) prefixConsumerData(dataPrefix []byte, topicHash uint32) []byte {
+	keyPrefix := make([]byte, len(t.prefix)+len(dataPrefix)+topicHashSize+1)
+	copy(keyPrefix, t.prefix)
+	offset := len(t.prefix)
+	copy(keyPrefix[offset:], dataPrefix)
+	offset += len(dataPrefix)
+	binary.BigEndian.PutUint32(keyPrefix[offset:], topicHash)
+	offset += topicHashSize
+	keyPrefix[offset] = ':'
+	return keyPrefix
+}
+
+func (t *LocalStorageMetadata) keyForConsumerMetadata(cm ConsumerMetadata) []byte {
+	return append(
+		t.prefixConsumerData(prefixConsMetaByUUID, cm.TopicHash),
+		cm.ConsumerIDBytes()...)
+}
+
+func (t *LocalStorageMetadata) keyForConsumerPartitions(cm ConsumerPartitions) []byte {
+	return append(
+		t.prefixConsumerData(prefixConsPartsByUUID, cm.TopicHash),
+		cm.ConsumerIDBytes()...)
 }

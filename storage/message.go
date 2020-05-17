@@ -1,8 +1,9 @@
 package storage
 
 import (
-	"crypto/rand"
+	"encoding/binary"
 	"errors"
+	"math/rand"
 
 	"github.com/sirupsen/logrus"
 )
@@ -24,21 +25,23 @@ type Message struct {
 // a KV store ordered by priority.
 // Its size is 8bytes, 2 for the priority and 6 for the entropy
 func (m Message) Key() []byte {
-	return append(uInt16ToBytes(m.Priority), m.ID...)
+	key := make([]byte, prioritySize+len(m.ID))
+	binary.BigEndian.PutUint16(key, m.Priority)
+	copy(key[prioritySize:], m.ID)
+	return key
 }
 
 // NewMessageFromKV constructs a message from a BadgerKV
 // It does not allocate memory
 func NewMessageFromKV(kv KVPair) (Message, error) {
-	if len(kv.Key) < 3 {
+	if len(kv.Key) != prioritySize+msgIDSize {
 		return Message{}, errors.New("invalid key")
 	}
 
-	priority := getUint16(kv.Key)
-
 	return Message{
-		Priority: priority,
-		ID:       kv.Key[2:],
+		//first 2 bytes represent the priority
+		Priority: binary.BigEndian.Uint16(kv.Key),
+		ID:       kv.Key[prioritySize:],
 		Body:     kv.Val,
 	}, nil
 }
@@ -70,13 +73,13 @@ We have 6bytes of entropy, that means 2^48 unique possibilities
 for each partition of a topic (200.000.000.000.000 values).
 */
 func NewMessageWithRandomID(priority uint16, body []byte) Message {
-	randomMsgID := make([]byte, 6)
+	randomMsgID := make([]byte, msgIDSize)
 
 	//if using global rand singleton source is found to be a Mutex bottleneck
 	// move this in a struct with its
 	// own pool of random sources, but probably this will never happen.
-	_, err := rand.Read(randomMsgID)
-	if err != nil {
+	size, err := rand.Read(randomMsgID) //nolint:gosec
+	if err != nil || size != msgIDSize {
 		// this means the node has bigger issues than this, most likely it needs to be terminated
 		logrus.StandardLogger().WithError(err).Error("the node ran out of entropy")
 	}
