@@ -52,7 +52,7 @@ Timeline topic will bring time-scheduled messages with a custom set of features 
 
 # Contributing 
 
-See https://github.com/dejaq/broker/wiki/Contributing and choose your poison: https://github.com/dejaq/broker/issues
+See [Contributing](./CONTRIBUTING.md) and choose your poison: https://github.com/dejaq/broker/issues
 
 # Feedback
 
