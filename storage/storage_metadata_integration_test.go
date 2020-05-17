@@ -192,7 +192,7 @@ func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
 
 	cp1 := ConsumerPartitions{
 		ConsumerID: "cons1",
-		Partitions: []uint16{42, 1, 99},
+		Partitions: []uint16{42, 1, 99, 1024, 65500},
 	}
 	cp2 := ConsumerPartitions{
 		ConsumerID: "cons2",
@@ -205,8 +205,8 @@ func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
 	cons := []ConsumerPartitions{cp2, cp3, cp1}
 
 	for _, topic := range topics {
-		for _, c := range cons {
-			c.TopicHash = topic
+		for i := range cons {
+			cons[i].TopicHash = topic
 		}
 		err := suite.metadata.UpsertConsumerPartitions(cons)
 		suite.Require().NoError(err)
@@ -215,22 +215,28 @@ func (suite *InMemoryMetadataSuite) TestConsumersPartitions() {
 	for _, topic := range topics {
 		got, err := suite.metadata.ConsumerPartitions(topic)
 		suite.Require().NoError(err)
-		suite.Require().Len(got, len(cons), "more or less consumers returned")
+		suite.Require().Len(got, len(cons),
+			"more or less consumers returned for topic %d", topic)
 
-		for _, c := range cons {
+		for _, consGot := range got {
+			suite.Require().Equal(topic, consGot.TopicHash,
+				"exp consumer for topic %d but got for %d ", topic, consGot.TopicHash)
+		}
+
+		for _, consWanted := range cons {
 			//we need to search for it
 			var found bool
-			for _, cg := range got {
-				if cg.ConsumerID == c.ConsumerID {
+			for _, consGot := range got {
+				if consGot.ConsumerID == consWanted.ConsumerID {
 					suite.Assert().
-						ElementsMatch(cg.Partitions, c.Partitions,
+						ElementsMatch(consGot.Partitions, consWanted.Partitions,
 							"partitions for cons %s in topic %s were lost",
-							cg.ConsumerID, topic)
+							consGot.ConsumerID, topic)
 					found = true
 					break
 				}
 			}
-			suite.Require().True(found, "consumer lost %s in topic %s", c.ConsumerID, topic)
+			suite.Require().True(found, "consumer lost %s in topic %s", consWanted.ConsumerID, topic)
 		}
 	}
 }

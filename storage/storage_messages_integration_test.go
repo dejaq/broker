@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -148,80 +149,80 @@ func (suite *InMemoryMessagesSuite) TestOrderedKeysInAPriority() {
 	}
 }
 
-//func (suite *InMemoryMessagesSuite) TestOrderedKeysInMultiplePrioritiesAndPartitions() {
-//	k1 := []byte("key1")
-//	k2 := []byte("key2")
-//	k3 := []byte("key3")
-//
-//	//each test will be run for each partition / topic
-//	topics := []uint32{0, 87}
-//	partitions := []uint16{0, 87, 42}
-//
-//	tests := []struct {
-//		name          string
-//		input         []Message
-//		orderedOutput []Message
-//	}{
-//		{
-//			name: "3priorities1msg",
-//			input: flattenSlices(
-//				keysToMsgs([][]byte{k3}, 3),
-//				keysToMsgs([][]byte{k1}, 5),
-//				keysToMsgs([][]byte{k2}, 1),
-//			),
-//			orderedOutput: flattenSlices(
-//				keysToMsgs([][]byte{k2}, 1),
-//				keysToMsgs([][]byte{k3}, 3),
-//				keysToMsgs([][]byte{k1}, 5),
-//			),
-//		},
-//		{
-//			name: "3priorities3msgs",
-//			input: flattenSlices(
-//				keysToMsgs([][]byte{k3, k1, k2}, 3),
-//				keysToMsgs([][]byte{k1, k2, k3}, 5),
-//				keysToMsgs([][]byte{k3, k2, k1}, 1),
-//			),
-//			orderedOutput: flattenSlices(
-//				keysToMsgs([][]byte{k1, k2, k3}, 1),
-//				keysToMsgs([][]byte{k1, k2, k3}, 3),
-//				keysToMsgs([][]byte{k1, k2, k3}, 5),
-//			),
-//		},
-//	}
-//
-//	for _, test := range tests {
-//		for _, topic := range topics {
-//			//this also tests Message constructors
-//			test := test
-//
-//			//we put ALL the data in and then check if it comes out right
-//			for _, partition := range partitions {
-//				err := suite.messages.Upsert(topic, partition, test.input)
-//				suite.Require().NoError(err)
-//			}
-//		}
-//
-//		for _, topic := range topics {
-//			test := test
-//			topic := topic
-//			for _, partition := range partitions {
-//				partition := partition
-//				suite.Run(fmt.Sprintf("%d-%d-%s", topic, partition, test.name), func() {
-//					got, err := suite.messages.GetLowestPriority(topic, partition, 100)
-//					suite.Require().NoError(err)
-//					if suite.Require().Equal(len(test.orderedOutput), len(got)) {
-//						for i := range got {
-//							suite.Require().Equal(test.orderedOutput[i].ID, got[i].ID)
-//							suite.Require().Equal(test.orderedOutput[i].Priority, got[i].Priority)
-//							suite.Require().Equal(test.orderedOutput[i].Body, got[i].Body)
-//						}
-//					}
-//				})
-//			}
-//		}
-//	}
-//}
+func (suite *InMemoryMessagesSuite) TestOrderedKeysInMultiplePrioritiesAndPartitions() {
+	//keys must have 6 bytes
+	k1 := []byte("key1__")
+	k2 := []byte("key2__")
+	k3 := []byte("key3__")
+
+	//each test will be run for each partition / topic
+	topics := []uint32{0, 87}
+	partitions := []uint16{0, 87, 42}
+
+	tests := []struct {
+		name          string
+		input         []Message
+		orderedOutput []Message
+	}{
+		{
+			name: "3priorities1msg",
+			input: flattenSlices(
+				keysToMsgs([][]byte{k3}, 3),
+				keysToMsgs([][]byte{k1}, 5),
+				keysToMsgs([][]byte{k2}, 1),
+			),
+			orderedOutput: flattenSlices(
+				keysToMsgs([][]byte{k2}, 1),
+				keysToMsgs([][]byte{k3}, 3),
+				keysToMsgs([][]byte{k1}, 5),
+			),
+		},
+		{
+			name: "3priorities3msgs",
+			input: flattenSlices(
+				keysToMsgs([][]byte{k3, k1, k2}, 3),
+				keysToMsgs([][]byte{k1, k2, k3}, 5),
+				keysToMsgs([][]byte{k3, k2, k1}, 1),
+			),
+			orderedOutput: flattenSlices(
+				keysToMsgs([][]byte{k1, k2, k3}, 1),
+				keysToMsgs([][]byte{k1, k2, k3}, 3),
+				keysToMsgs([][]byte{k1, k2, k3}, 5),
+			),
+		},
+	}
+
+	for _, test := range tests {
+		for _, topic := range topics {
+			//this also tests Message constructors
+			test := test
+
+			//we put ALL the data in and then check if it comes out right
+			for _, partition := range partitions {
+				err := suite.messages.Upsert(topic, partition, test.input)
+				suite.Require().NoError(err)
+			}
+		}
+
+		for _, topic := range topics {
+			test := test
+			topic := topic
+			for _, partition := range partitions {
+				partition := partition
+				suite.Run(fmt.Sprintf("%d-%d-%s", topic, partition, test.name), func() {
+					got, err := suite.messages.GetLowestPriority(topic, partition, 100)
+					suite.Require().NoError(err)
+					suite.Require().Len(got, len(test.orderedOutput))
+					for i := range got {
+						suite.Require().Equal(test.orderedOutput[i].ID, got[i].ID)
+						suite.Require().Equal(test.orderedOutput[i].Priority, got[i].Priority)
+						suite.Require().Equal(test.orderedOutput[i].Body, got[i].Body)
+					}
+				})
+			}
+		}
+	}
+}
 
 func flattenSlices(list ...[]Message) []Message {
 	var result []Message

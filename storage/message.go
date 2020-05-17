@@ -78,7 +78,7 @@ func NewMessageWithRandomID(priority uint16, body []byte) Message {
 	//if using global rand singleton source is found to be a Mutex bottleneck
 	// move this in a struct with its
 	// own pool of random sources, but probably this will never happen.
-	size, err := rand.Read(randomMsgID) //nolint:gosec
+	size, err := rand.Read(randomMsgID) //nolint:gosec //is a hash not crypto
 	if err != nil || size != msgIDSize {
 		// this means the node has bigger issues than this, most likely it needs to be terminated
 		logrus.StandardLogger().WithError(err).Error("the node ran out of entropy")

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/spaolacci/murmur3"
+	"github.com/twmb/murmur3"
 
 	"github.com/dgraph-io/badger/v2"
 	"github.com/sirupsen/logrus"
@@ -209,15 +209,12 @@ func (t *LocalStorageMetadata) ConsumerPartitions(topicHash uint32) ([]ConsumerP
 	result := make([]ConsumerPartitions, len(kvs))
 	for i := range kvs {
 		result[i] = ConsumerPartitions{
+			TopicHash: topicHash,
 			//the prefix is removed by the parent
 			ConsumerID: string(kvs[i].Key),
-			TopicHash:  topicHash,
+			//each partition has 2bytes
+			Partitions: bytesToSliceUInt16(kvs[i].Val),
 		}
-		//each partition has 2bytes
-		src := kvs[i].Val
-		dest := bytesToSliceUInt16(src)
-
-		result[i].Partitions = dest
 	}
 	return result, nil
 }
@@ -249,12 +246,14 @@ func (t *LocalStorageMetadata) prefixConsumerData(dataPrefix []byte, topicHash u
 }
 
 func (t *LocalStorageMetadata) keyForConsumerMetadata(cm ConsumerMetadata) []byte {
+	//TODO avoid 2x memory allocs by doing the work of append ourselves
 	return append(
 		t.prefixConsumerData(prefixConsMetaByUUID, cm.TopicHash),
 		cm.ConsumerIDBytes()...)
 }
 
 func (t *LocalStorageMetadata) keyForConsumerPartitions(cm ConsumerPartitions) []byte {
+	//TODO avoid 2x memory allocs by doing the work of append ourselves
 	return append(
 		t.prefixConsumerData(prefixConsPartsByUUID, cm.TopicHash),
 		cm.ConsumerIDBytes()...)
