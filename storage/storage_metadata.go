@@ -46,7 +46,8 @@ type LocalStorageMetadata struct {
 	parent *LocalStorage
 }
 
-// CreateTopic appends an immutable Topic
+// CreateTopic appends an immutable Topic.
+// It will fail if the topic already exists
 func (t *LocalStorageMetadata) CreateTopic(topicID string, partitionsCount int) (TopicMetadata, error) {
 	if !IsTopicIDValid(topicID) {
 		return TopicMetadata{}, ErrTopicIDInvalid
