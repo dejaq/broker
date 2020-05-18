@@ -12,9 +12,9 @@ Official page: https://dejaq.io/
 We have high hopes for this project but in the first iteration, this alpha version we will only deliver an MVP that will contain:
 
 * `Priority Queue` with messages that have priorities ranging between 0-65535
-* `High availability / distributed` You can run the brokers as a 3nodes (or more) cluster to increase the fault-tolerance and durability.
+* `High availability / distributed` You can run the brokers as a 3nodes (or more) cluster to increase the fault-tolerance and durability. Note: DejaQ is NOT Available in the CAP theorem (see `Consistency`).
 * `Durability` All nodes will have the entire dataset saved on disk (using Raft for consensus and BadgerDB for embedded storage)
-* `Consistency`: The writes will be acknowledged by the majority of the nodes and reads only served by the nodes that are up to date. Using Raft and BadgerDB we can provide a snapshot consistency. 
+* `Consistency`: The writes will be acknowledged by the majority of the nodes and reads only served by the nodes that are up to date. Using Raft and BadgerDB we can provide a snapshot consistency. In `CAP` theorem DejaQ is `C`, when the majority of the nodes are lost the system will stop functioning.
 * `Easy to use API` DejaQ provides a Swagger/OpenAPI HTTP Rest API.
 * `Dynamic consuming` One of the largest advantages of DejaQ is that topics are split into partitions (internally) and they are assigned dynamically at runtime depending on the active consumers. Although the algorithm in this alpha version is basic it will be extended in the future to allow more complex consuming strategies.
 * `At least once delivery` with the best effort for exactly-once-delivery with the warning that the consumer has to successfully acknowledge the processed messages in a timely manner (as long as it has its partitions assigned).

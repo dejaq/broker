@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"sort"
 
 	"github.com/dgraph-io/badger/v2"
 
@@ -87,8 +88,6 @@ func (m *LocalStorageMessages) GetLowestPriority(topicHash uint32, partition uin
 func (m *LocalStorageMessages) GetPartitionWithLowestPriority(topicHash uint32, partitions []uint16) (uint16, error) {
 	var lowestPartition uint16
 	var lowestPriority uint16
-	var previousPartition uint16
-	var atLeastOne bool
 
 	//for fast query of the partitions list
 	dict := make(map[uint16]struct{}, len(partitions))
@@ -96,7 +95,11 @@ func (m *LocalStorageMessages) GetPartitionWithLowestPriority(topicHash uint32, 
 		dict[partitions[i]] = struct{}{}
 	}
 
-	//this can also be achieved using Seek()s
+	//we need the partitions sorted so we can
+	// binary search them in badgerdb in order
+	sort.Slice(partitions, func(i, j int) bool {
+		return partitions[i] < partitions[j]
+	})
 
 	err := m.parent.db.View(func(txn *badger.Txn) error {
 		prefix := m.prefixForTopicAndPart(topicHash, 0)
@@ -113,29 +116,35 @@ func (m *LocalStorageMessages) GetPartitionWithLowestPriority(topicHash uint32, 
 			InternalAccess: false,
 		})
 		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
-			//we only care for the first message of each partition
-			//but for only a subset of partitions
+		it.Rewind()
+		partitionIndex := 0
+		var nextPrefix []byte
+
+		for {
 			//first 2 bytes of the key is the partition
 			partition := binary.BigEndian.Uint16(it.Item().Key())
-			if atLeastOne && partition == previousPartition {
-				//we rely on the fact that partitions are sorted
-				// and we traverse ASC
-				//so we only need th first message from each partition
-				continue
+			_, weAreInterested := dict[partition]
+			if weAreInterested {
+				//make sure the priority we have now
+				//is what we're looking for
+				priority := binary.BigEndian.Uint16(it.Item().Key()[partitionSize:])
+				if priority <= lowestPriority {
+					lowestPriority = priority
+					lowestPartition = partition
+				}
 			}
-			if _, weAreInterested := dict[partition]; !weAreInterested {
-				continue
+			partitionIndex++
+			if partitionIndex >= len(partitions) {
+				//end of partitions
+				break
 			}
-			previousPartition = partition
-			atLeastOne = true
-
-			priority := binary.BigEndian.Uint16(it.Item().Key()[partitionSize:])
-			if priority >= lowestPriority {
-				continue
+			nextPrefix = m.prefixForTopicAndPart(topicHash, partitions[partitionIndex])
+			//do a binary search on the next priority we care
+			it.Seek(nextPrefix)
+			if !it.Valid() {
+				//end of table
+				break
 			}
-			lowestPriority = priority
-			lowestPartition = partition
 		}
 		return nil
 	})
